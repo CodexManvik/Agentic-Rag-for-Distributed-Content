@@ -1,4 +1,5 @@
 from functools import lru_cache
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from typing import Any, Protocol, cast
 
 import requests
@@ -26,13 +27,25 @@ class ChromaLocalEmbeddingFunction(EmbeddingFunction[Documents]):
         return cast(Embeddings, self._embeddings_model.embed_documents(list(input)))
 
 
-def get_chat_model() -> ChatModel | None:
+class ModelInvocationError(RuntimeError):
+    pass
+
+
+def get_chat_model() -> ChatModel:
     _ensure_model_available(settings.ollama_chat_model)
-    model = ChatOllama(
-        base_url=settings.ollama_base_url,
-        model=settings.ollama_chat_model,
-        temperature=0,
-    )
+    ollama_kwargs: dict[str, Any] = {
+        "base_url": settings.ollama_base_url,
+        "model": settings.ollama_chat_model,
+        "temperature": settings.model_temperature,
+        "top_p": settings.model_top_p,
+        "top_k": settings.model_top_k,
+        "repeat_penalty": settings.model_repetition_penalty,
+        "num_predict": settings.model_max_output_tokens,
+        # Additional Ollama decoding controls exposed even if not present in stubs.
+        "min_p": settings.model_min_p,
+        "presence_penalty": settings.model_presence_penalty,
+    }
+    model = ChatOllama(**ollama_kwargs)
     return cast(ChatModel, model)
 
 
@@ -48,6 +61,21 @@ def get_embedding_model() -> EmbeddingModel:
 def get_chroma_embedding_function() -> EmbeddingFunction[Documents]:
     model = get_embedding_model()
     return ChromaLocalEmbeddingFunction(model)
+
+
+@lru_cache(maxsize=1)
+def get_shared_chat_model() -> ChatModel:
+    return get_chat_model()
+
+
+@lru_cache(maxsize=1)
+def get_shared_embedding_model() -> EmbeddingModel:
+    return get_embedding_model()
+
+
+@lru_cache(maxsize=1)
+def get_shared_chroma_embedding_function() -> EmbeddingFunction[Documents]:
+    return ChromaLocalEmbeddingFunction(get_shared_embedding_model())
 
 
 @lru_cache(maxsize=1)
@@ -71,9 +99,67 @@ def _available_models() -> set[str]:
     return names
 
 
+def refresh_model_registry() -> None:
+    _available_models.cache_clear()
+
+
+def check_ollama_readiness() -> tuple[bool, str]:
+    tags_url = f"{settings.ollama_base_url.rstrip('/')}" + "/api/tags"
+    try:
+        response = requests.get(tags_url, timeout=8)
+        response.raise_for_status()
+    except Exception as exc:
+        return False, (
+            f"Cannot reach Ollama at {settings.ollama_base_url}. "
+            "Start Ollama and verify network access."
+        )
+
+    refresh_model_registry()
+    available = _available_models()
+    missing: list[str] = []
+    if not _is_model_available(settings.ollama_chat_model, available):
+        missing.append(settings.ollama_chat_model)
+    if not _is_model_available(settings.ollama_embedding_model, available):
+        missing.append(settings.ollama_embedding_model)
+    if missing:
+        pulls = ", ".join(f"ollama pull {m}" for m in missing)
+        return False, f"Missing Ollama models: {', '.join(missing)}. Run: {pulls}"
+    return True, "ready"
+
+
 def _ensure_model_available(model_name: str) -> None:
     available = _available_models()
-    if model_name not in available:
+    if not _is_model_available(model_name, available):
         raise RuntimeError(
             f"Required Ollama model '{model_name}' is not available. Pull it with: ollama pull {model_name}"
         )
+
+
+def _is_model_available(model_name: str, available_models: set[str]) -> bool:
+    if model_name in available_models:
+        return True
+    if ":" not in model_name and f"{model_name}:latest" in available_models:
+        return True
+    if ":" in model_name:
+        base_name = model_name.split(":", 1)[0]
+        if model_name.endswith(":latest") and base_name in available_models:
+            return True
+    return False
+
+
+def invoke_chat_with_timeout(prompt: str, purpose: str, timeout_seconds: float | None = None) -> Any:
+    timeout = timeout_seconds or settings.model_request_timeout_seconds
+    model = get_shared_chat_model()
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(model.invoke, prompt)
+            return future.result(timeout=timeout)
+    except FutureTimeoutError as exc:
+        raise ModelInvocationError(
+            f"Timed out during {purpose} after {timeout:.1f}s"
+        ) from exc
+    except Exception as exc:
+        raise ModelInvocationError(
+            f"Model invocation failed during {purpose}: {exc}"
+        ) from exc

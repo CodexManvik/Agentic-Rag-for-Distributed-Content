@@ -15,8 +15,19 @@ from app.graph.state import NavigatorState
 
 
 def _route_after_adequacy(state: NavigatorState) -> str:
-    if state["retrieval_quality"]["adequate"]:
+    quality = state["retrieval_quality"]
+    if quality["adequate"]:
         return "synthesis"
+
+    if settings.normalized_runtime_profile == "low_latency":
+        very_weak = (
+            quality["max_score"] < max(0.20, settings.retrieval_min_score * 0.6)
+            or quality["chunk_count"] <= 1
+            or quality["source_diversity"] == 0
+        )
+        if not very_weak:
+            return "abstain"
+
     if state["retries_used"] < settings.max_retrieval_retries:
         return "reformulation"
     return "abstain"

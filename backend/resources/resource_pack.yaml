@@ -1,0 +1,28 @@
+name: hackathon_public_pack_v1
+description: Curated public resource pack for Agentic RAG demo quality and reproducible evaluation.
+created_at: 2026-03-26T00:00:00Z
+web_urls:
+  - https://support.atlassian.com/confluence-cloud/docs/make-a-space-public/
+  - https://support.atlassian.com/confluence-cloud/docs/set-up-and-manage-public-links/
+  - https://support.atlassian.com/confluence-cloud/docs/manage-public-links-across-confluence-cloud/
+  - https://support.atlassian.com/confluence-cloud/docs/how-secure-are-public-links/
+  - https://confluence.atlassian.com/doc/spaces-139459.html
+  - https://docs.langchain.com/oss/python/langchain/rag
+  - https://docs.langchain.com/oss/python/langchain/retrieval
+  - https://python.langchain.com/docs/tutorials/rag/
+  - https://python.langchain.com/docs/concepts/
+  - https://python.langchain.com/docs/introduction/
+  - https://www.atlassian.com/software/confluence/demo
+  - https://www.langchain.com/retrieval
+pdf_paths: []
+ingestion_profile:
+  chunk_size: 1200
+  chunk_overlap: 200
+  retrieval_top_k: 4
+  retrieval_per_query_k: 4
+  retrieval_bm25_k: 6
+  retrieval_min_score: 0.35
+  retrieval_min_chunks: 3
+  retrieval_min_source_diversity: 2
+  rerank_enabled: true
+  public_sources_only: true

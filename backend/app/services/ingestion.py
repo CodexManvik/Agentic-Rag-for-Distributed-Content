@@ -2,7 +2,6 @@ from pathlib import Path
 from datetime import datetime, timezone
 from hashlib import sha256
 from typing import Any, TypedDict, cast
-from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -10,8 +9,9 @@ from chromadb.api.types import Metadata
 from pypdf import PdfReader
 
 from app.config import settings
+from app.services.compliance import is_url_allowlisted
 from app.services.chunking import split_structured_text
-from app.services.vector_store import get_collection, reset_collection
+from app.services.vector_store import get_collection, refresh_bm25_cache, reset_collection
 
 
 class IngestionStats(TypedDict):
@@ -23,6 +23,7 @@ class IngestionStats(TypedDict):
 
 def reset_index() -> None:
     reset_collection()
+    refresh_bm25_cache()
 
 
 def _timestamp() -> str:
@@ -48,10 +49,9 @@ def _existing_hashes() -> set[str]:
 
 
 def _ensure_allowed_domain(url: str) -> None:
+    allowed, host = is_url_allowlisted(url)
     if not settings.public_sources_only:
         return
-    host = urlparse(url).netloc.lower()
-    allowed = any(host == domain or host.endswith(f".{domain}") for domain in settings.allowed_domains)
     if not allowed:
         raise ValueError(f"Domain '{host}' is not allowlisted for public ingestion")
 
@@ -134,6 +134,7 @@ def ingest_web_page(url: str) -> IngestionStats:
         if docs:
             collection.upsert(ids=ids, documents=docs, metadatas=metadatas)
             stats["chunks_added"] = len(docs)
+            refresh_bm25_cache()
     except Exception as exc:
         stats["errors"].append(str(exc))
 
@@ -192,6 +193,7 @@ def ingest_pdf(file_path: str) -> IngestionStats:
         if docs:
             collection.upsert(ids=ids, documents=docs, metadatas=metadatas)
             stats["chunks_added"] = len(docs)
+            refresh_bm25_cache()
     except Exception as exc:
         stats["errors"].append(str(exc))
 

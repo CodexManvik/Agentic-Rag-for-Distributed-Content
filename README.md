@@ -14,7 +14,7 @@ Solution: an adaptive multi-agent LangGraph pipeline that plans queries, retriev
 - Agent Orchestration: LangGraph
 - Vector Store: ChromaDB
 - Chat Model: Ollama `qwen3.5:4b` (or closest available local qwen3.5 4b variant)
-- Embeddings: Ollama `nomic-embed-text`
+- Embeddings: Ollama `nomic-embed-text:latest`
 - Frontend: Streamlit
 - Infra: Docker Compose
 
@@ -68,6 +68,56 @@ Why this is truly agentic:
 - Deduplication by content hash at ingestion time.
 - Adequacy scoring based on score threshold, chunk count, and source diversity.
 
+## Resource Pack
+
+Resource manifest:
+- `backend/resources/resource_pack.yaml`
+
+Ingestion reports:
+- `backend/resources/ingestion_report.json`
+- `backend/resources/ingestion_report.md`
+
+### Curated Public URLs
+
+Confluence/public knowledge governance:
+- https://support.atlassian.com/confluence-cloud/docs/make-a-space-public/
+- https://support.atlassian.com/confluence-cloud/docs/set-up-and-manage-public-links/
+- https://support.atlassian.com/confluence-cloud/docs/manage-public-links-across-confluence-cloud/
+- https://support.atlassian.com/confluence-cloud/docs/how-secure-are-public-links/
+- https://confluence.atlassian.com/doc/spaces-139459.html
+
+RAG/agent technical references:
+- https://docs.langchain.com/oss/python/langchain/rag
+- https://docs.langchain.com/oss/python/langchain/retrieval
+- https://python.langchain.com/docs/tutorials/rag/
+- https://python.langchain.com/docs/concepts/
+- https://python.langchain.com/docs/introduction/
+
+Optional demo-context pages:
+- https://www.atlassian.com/software/confluence/demo
+- https://www.langchain.com/retrieval
+
+### Resource Pack Commands
+
+```bash
+python backend/run_ingestion.py --reset --use-pack
+python backend/run_ingestion.py --use-pack --save-report backend/resources/ingestion_report.json
+python backend/run_ingestion.py --use-pack --validate-resources --save-report backend/resources/ingestion_report.json
+```
+
+Source priority order used by CLI:
+1. explicit CLI URLs/PDF directory
+2. resource pack values when `--use-pack`
+3. built-in defaults
+
+Use optional snapshot utility:
+
+```bash
+python backend/scripts/save_resources.py --urls https://python.langchain.com/docs/introduction/ --output-dir backend/resources/pdfs
+```
+
+Reminder: ingest only public or approved documentation.
+
 ## Evaluation Harness
 
 Location: `backend/eval`
@@ -110,7 +160,7 @@ Replace with your generated report values after running eval.
 
 ```bash
 ollama pull qwen3.5:4b
-ollama pull nomic-embed-text
+ollama pull nomic-embed-text:latest
 ```
 
 If `qwen3.5:4b` is unavailable in your environment, pull the closest local qwen3.5 4b-compatible tag and set `OLLAMA_CHAT_MODEL` accordingly.
@@ -152,6 +202,9 @@ streamlit run frontend/app.py --server.port 8501
 
 ```bash
 make ingest
+make ingest-pack
+make ingest-report
+make resources-validate
 make run
 make eval
 make test

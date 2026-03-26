@@ -5,7 +5,7 @@ from typing import Any
 from app.config import settings
 from app.graph.state import Citation, NavigatorState, SynthesisOutput
 from app.services.guardrails import validate_citations
-from app.services.llm import get_chat_model
+from app.services.llm import ModelInvocationError, invoke_chat_with_timeout
 from app.services.vector_store import assess_retrieval_adequacy, query_chunks
 
 
@@ -48,28 +48,36 @@ def _unique_queries(lines: list[str]) -> list[str]:
 
 def planning_agent(state: NavigatorState) -> NavigatorState:
     query = state["original_query"].strip()
-    model = get_chat_model()
-    prompt = f"""
-You are the Planning Agent for an enterprise knowledge retrieval system.
-Your objective is to decompose the user's complex query into 3 to 5 highly specific, independent search queries optimized for a vector database.
+    if settings.normalized_runtime_profile == "low_latency":
+        state["sub_queries"] = [query]
+        _trace(state, "planning", "ok", "Low-latency fast path used single query")
+        return state
 
-RULES:
-1. Isolate distinct entities, acronyms, and operational concepts.
-2. If the query asks for a comparison, create separate search queries for each subject.
-3. Do not include conversational filler, explanations, or numbering.
-4. Output exactly ONE search query per line.
+    prompt = f"""
+You are a retrieval planner. Output concise, independent search queries.
+Rules:
+- One query per line.
+- No numbering or explanations.
+- Preserve key entities/acronyms.
+- Maximum {settings.planner_max_subqueries} lines.
 
 USER QUERY:
 {query}
-
-OUTPUT FORMAT:
-[Query 1]
-[Query 2]
-[Query 3]
 """
-    response_text = _message_to_text(model.invoke(prompt))
+    try:
+        response_text = _message_to_text(
+            invoke_chat_with_timeout(
+                prompt,
+                purpose="planning",
+                timeout_seconds=min(settings.model_request_timeout_seconds, 8.0),
+            )
+        )
+    except ModelInvocationError as exc:
+        _trace(state, "planning", "failed", str(exc))
+        state["sub_queries"] = [query]
+        return state
     candidates = _unique_queries(response_text.splitlines())
-    state["sub_queries"] = (candidates[:5] if candidates else [query])
+    state["sub_queries"] = (candidates[: settings.planner_max_subqueries] if candidates else [query])
     _trace(state, "planning", "ok", f"Generated {len(state['sub_queries'])} sub-queries")
     return state
 
@@ -91,9 +99,8 @@ def adequacy_check_agent(state: NavigatorState) -> NavigatorState:
 
 def reformulation_agent(state: NavigatorState) -> NavigatorState:
     state["retries_used"] += 1
-    model = get_chat_model()
     prompt = f"""
-You are the Query Reformulation Agent.
+You are the query reformulation agent.
 Initial question: {state['original_query']}
 Current sub-queries:
 {chr(10).join(state['sub_queries'])}
@@ -101,12 +108,23 @@ Current sub-queries:
 Retrieval quality:
 {state['retrieval_quality']}
 
-Return up to 4 sharper, non-duplicate retrieval queries. One line per query.
+Return up to {settings.planner_max_subqueries} sharper, non-duplicate retrieval queries.
+One line per query.
 """
-    text = _message_to_text(model.invoke(prompt))
+    try:
+        text = _message_to_text(
+            invoke_chat_with_timeout(
+                prompt,
+                purpose="reformulation",
+                timeout_seconds=min(settings.model_request_timeout_seconds, 8.0),
+            )
+        )
+    except ModelInvocationError as exc:
+        _trace(state, "reformulation", "failed", str(exc))
+        return state
     revised = _unique_queries(text.splitlines())
     if revised:
-        state["sub_queries"] = revised[:4]
+        state["sub_queries"] = revised[: settings.planner_max_subqueries]
     _trace(state, "reformulation", "ok", f"Retries used: {state['retries_used']}")
     return state
 
@@ -135,31 +153,59 @@ def _extract_json(text: str) -> str:
 
 
 def _synthesis_prompt(state: NavigatorState, context: str, strict: bool) -> str:
-    strict_block = "" if not strict else "If validation previously failed, be stricter: each sentence must end with [n] or [n][m]."
+    strict_block = "" if not strict else "Each factual sentence must include [n] citations."
     return f"""
-You are the Synthesis Agent for an enterprise knowledge assistant.
-Your objective is to answer the user's question using ONLY the provided context retrieved from the system.
+You are a grounded synthesis agent.
+Use only the context below. If evidence is insufficient, abstain.
 
-CONTEXT DATA:
+CONTEXT:
 {context}
 
-RULES FOR SYNTHESIS:
-1. STRICT GROUNDING: If the context does not contain the answer, you must state: "I do not have sufficient information in the retrieved documents to answer this query." Do not attempt to guess or use external knowledge.
-2. MANDATORY CITATIONS: Every factual claim, statistic, or specific procedure you state MUST be immediately followed by its corresponding source index in brackets. Example: "The deployment threshold is 95% [1]."
-3. MULTIPLE CITATIONS: If multiple sources support a claim, combine them. Example: "Both nodes must be restarted [1][3]."
-4. NO SOURCE NAMING IN TEXT: Do not write "According to Source [1]...". State the fact directly, followed by the bracketed citation.
-5. RETURN JSON ONLY with fields: answer (string), cited_indices (array of integers), confidence (float 0-1), abstain_reason (string or null).
-6. {strict_block}
+Rules:
+1. Grounded only in provided context.
+2. Every factual sentence needs [n] citation.
+3. Return JSON only with keys: answer, cited_indices, confidence, abstain_reason.
+4. {strict_block}
 
 USER QUESTION:
 {state['original_query']}
-
-Generate the final response following all rules above:
 """
 
 
+def _select_context_chunks(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    limit = settings.context_chunk_limit
+    char_limit = settings.context_chunk_char_limit
+    chosen: list[dict[str, Any]] = []
+    seen_sources: set[str] = set()
+
+    for chunk in chunks:
+        source = str(chunk.get("source", "unknown"))
+        content = str(chunk.get("content", ""))[:char_limit]
+        if not content.strip():
+            continue
+        if source not in seen_sources:
+            chunk_copy = dict(chunk)
+            chunk_copy["content"] = content
+            chosen.append(chunk_copy)
+            seen_sources.add(source)
+        if len(chosen) >= limit:
+            return chosen
+
+    for chunk in chunks:
+        if len(chosen) >= limit:
+            break
+        content = str(chunk.get("content", ""))[:char_limit]
+        if not content.strip():
+            continue
+        chunk_copy = dict(chunk)
+        chunk_copy["content"] = content
+        if chunk_copy not in chosen:
+            chosen.append(chunk_copy)
+    return chosen[:limit]
+
+
 def _run_synthesis(state: NavigatorState, strict: bool) -> SynthesisOutput:
-    chunks = state["retrieved_chunks"][:8]
+    chunks = _select_context_chunks(state["retrieved_chunks"])
     if not chunks:
         return {
             "answer": "I do not have sufficient information in the retrieved documents to answer this query.",
@@ -175,8 +221,24 @@ def _run_synthesis(state: NavigatorState, strict: bool) -> SynthesisOutput:
         )
     context = "\n\n".join(context_lines)
 
-    model = get_chat_model()
-    raw_text = _message_to_text(model.invoke(_synthesis_prompt(state, context, strict))).strip()
+    try:
+        synth_timeout = settings.model_request_timeout_seconds
+        if settings.normalized_runtime_profile == "low_latency":
+            synth_timeout = min(synth_timeout, 12.0)
+        raw_text = _message_to_text(
+            invoke_chat_with_timeout(
+                _synthesis_prompt(state, context, strict),
+                purpose="synthesis",
+                timeout_seconds=synth_timeout,
+            )
+        ).strip()
+    except ModelInvocationError:
+        return {
+            "answer": "I do not have sufficient information in the retrieved documents to answer this query.",
+            "cited_indices": [],
+            "confidence": 0.0,
+            "abstain_reason": "Model unavailable during synthesis",
+        }
     try:
         parsed = json.loads(_extract_json(raw_text))
         answer = str(parsed.get("answer", "")).strip()
@@ -201,7 +263,8 @@ def _run_synthesis(state: NavigatorState, strict: bool) -> SynthesisOutput:
 
 
 def synthesis_agent(state: NavigatorState) -> NavigatorState:
-    state["citations"] = _build_citations(state["retrieved_chunks"][:8])
+    selected = _select_context_chunks(state["retrieved_chunks"])
+    state["citations"] = _build_citations(selected)
     synth = _run_synthesis(state, strict=False)
     state["synthesis_output"] = synth
     state["final_response"] = synth["answer"]
@@ -220,6 +283,16 @@ def citation_validation_agent(state: NavigatorState) -> NavigatorState:
         validation["errors"].append(f"Structured cited_indices out of range: {invalid_list}")
 
     if validation["valid"]:
+        quality = state["retrieval_quality"]
+        if (
+            settings.normalized_runtime_profile == "low_latency"
+            and not quality["adequate"]
+            and state["confidence"] < 0.45
+        ):
+            state["abstained"] = True
+            state["abstain_reason"] = "Low-confidence answer under weak evidence"
+            _trace(state, "citation_validation", "failed", "quality_guard:auto_abstain")
+            return state
         _trace(state, "citation_validation", "ok", "Citation validation passed")
         return state
 
@@ -238,6 +311,13 @@ def citation_validation_agent(state: NavigatorState) -> NavigatorState:
             _trace(state, "citation_validation", "ok", "Passed after one regeneration")
             return state
         state["validation_errors"] = second["errors"]
+        if second.get("error_categories"):
+            _trace(
+                state,
+                "citation_validation",
+                "failed",
+                "categories:" + ",".join(second["error_categories"]),
+            )
 
     state["abstained"] = True
     if not state["abstain_reason"]:

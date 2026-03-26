@@ -5,10 +5,12 @@ langchain==0.3.13
 langchain-ollama==0.2.3
 langchain-text-splitters==0.3.4
 chromadb==0.5.23
+posthog<4
 rank-bm25==0.2.2
 pydantic-settings==2.7.0
 requests==2.32.3
 beautifulsoup4==4.12.3
 pypdf==5.1.0
+PyYAML==6.0.2
 streamlit==1.41.1
 pytest==8.3.4

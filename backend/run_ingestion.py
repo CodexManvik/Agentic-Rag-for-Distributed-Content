@@ -1,7 +1,14 @@
 import argparse
+import json
+import sys
+import time
 from pathlib import Path
+from typing import Any, TypedDict
 
-from app.services.ingestion import ingest_pdf, ingest_web_page, reset_index
+import requests
+import yaml
+
+from app.services.compliance import is_url_allowlisted
 
 
 DEFAULT_URLS: list[str] = [
@@ -12,17 +19,195 @@ DEFAULT_URLS: list[str] = [
 ]
 
 
+class ReportError(TypedDict):
+    source: str
+    error: str
+
+
+class IngestionReport(TypedDict):
+    run_timestamp: str
+    resource_pack_name: str
+    resource_pack_path: str
+    processed_urls: list[str]
+    processed_pdfs: list[str]
+    documents_processed: int
+    chunks_added: int
+    skipped_duplicates: int
+    errors: list[ReportError]
+    total_duration_seconds: float
+    success_count: int
+    failed_count: int
+
+
+def _resolve_report_paths(json_path: str) -> tuple[Path, Path]:
+    json_file = Path(json_path)
+    if not json_file.is_absolute():
+        json_file = Path.cwd() / json_file
+    md_file = json_file.with_suffix(".md")
+    return json_file, md_file
+
+
+def _load_resource_pack(path: str) -> dict[str, Any]:
+    pack_path = Path(path)
+    if not pack_path.exists():
+        raise FileNotFoundError(f"Resource pack not found: {pack_path}")
+    with pack_path.open("r", encoding="utf-8") as f:
+        parsed = yaml.safe_load(f) or {}
+    if not isinstance(parsed, dict):
+        raise ValueError("Resource pack must be a YAML object")
+    return parsed
+
+
+def _pick_sources(args: argparse.Namespace) -> tuple[list[str], list[str], str, str]:
+    cli_urls = args.urls or []
+    cli_pdfs: list[str] = []
+    if args.pdf_dir:
+        pdf_dir = Path(args.pdf_dir)
+        cli_pdfs = [str(p) for p in sorted(pdf_dir.glob("*.pdf"))] if pdf_dir.exists() else []
+
+    if cli_urls or cli_pdfs:
+        return cli_urls, cli_pdfs, "cli_overrides", ""
+
+    if args.use_pack:
+        pack = _load_resource_pack(args.resource_pack)
+        pack_urls = pack.get("web_urls", [])
+        pack_pdfs = pack.get("pdf_paths", [])
+        urls = [str(u) for u in pack_urls if isinstance(u, str)]
+        pdfs = [str(p) for p in pack_pdfs if isinstance(p, str)]
+        return urls, pdfs, str(pack.get("name", "unknown_pack")), str(Path(args.resource_pack))
+
+    return list(DEFAULT_URLS), [], "built_in_defaults", ""
+
+
+def _validate_sources(urls: list[str], pdfs: list[str]) -> tuple[list[ReportError], int]:
+    errors: list[ReportError] = []
+    valid_count = 0
+
+    for url in urls:
+        allowed, host = is_url_allowlisted(url)
+        if not allowed:
+            errors.append({"source": url, "error": f"Domain '{host}' is not allowlisted"})
+            continue
+        try:
+            response = requests.get(url, timeout=15)
+            if response.status_code >= 400:
+                errors.append({"source": url, "error": f"HTTP {response.status_code}"})
+            else:
+                valid_count += 1
+        except Exception as exc:
+            errors.append({"source": url, "error": str(exc)})
+
+    for pdf in pdfs:
+        path = Path(pdf)
+        if not path.exists():
+            errors.append({"source": pdf, "error": "PDF file not found"})
+        else:
+            valid_count += 1
+
+    return errors, valid_count
+
+
+def _write_report(report: IngestionReport, report_json_path: str) -> None:
+    json_path, md_path = _resolve_report_paths(report_json_path)
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    with json_path.open("w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2)
+
+    lines = [
+        "# Ingestion Report",
+        "",
+        f"Run timestamp: {report['run_timestamp']}",
+        f"Resource pack: {report['resource_pack_name']}",
+        f"Resource pack path: {report['resource_pack_path']}",
+        f"Total duration seconds: {report['total_duration_seconds']:.2f}",
+        "",
+        "## Summary",
+        "",
+        f"- documents_processed: {report['documents_processed']}",
+        f"- chunks_added: {report['chunks_added']}",
+        f"- skipped_duplicates: {report['skipped_duplicates']}",
+        f"- success_count: {report['success_count']}",
+        f"- failed_count: {report['failed_count']}",
+        "",
+        "## Processed URLs",
+    ]
+    lines.extend([f"- {u}" for u in report["processed_urls"]] or ["- none"])
+    lines.append("")
+    lines.append("## Processed PDFs")
+    lines.extend([f"- {p}" for p in report["processed_pdfs"]] or ["- none"])
+    lines.append("")
+    lines.append("## Errors")
+    if report["errors"]:
+        for err in report["errors"]:
+            lines.append(f"- {err['source']}: {err['error']}")
+    else:
+        lines.append("- none")
+    lines.append("")
+
+    with md_path.open("w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Ingest public web pages and PDFs into Chroma")
-    parser.add_argument("--urls", nargs="*", default=DEFAULT_URLS, help="List of public URLs")
+    parser.add_argument("--urls", nargs="*", default=None, help="List of public URLs")
     parser.add_argument("--pdf-dir", default="", help="Directory containing PDFs")
     parser.add_argument("--reset", action="store_true", help="Reset index before ingestion")
+    parser.add_argument(
+        "--resource-pack",
+        default="backend/resources/resource_pack.yaml",
+        help="Path to resource pack YAML",
+    )
+    parser.add_argument(
+        "--use-pack",
+        action="store_true",
+        help="Use resource pack URLs and PDF paths when CLI sources are not provided",
+    )
+    parser.add_argument(
+        "--save-report",
+        default="backend/resources/ingestion_report.json",
+        help="Path to write ingestion report JSON (MD written alongside)",
+    )
+    parser.add_argument(
+        "--validate-resources",
+        action="store_true",
+        help="Validate selected resource URLs/PDFs for allowlist and reachability",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = _parse_args()
+    start = time.perf_counter()
     print("Starting ingestion run")
+
+    try:
+        urls, pdfs, pack_name, pack_path = _pick_sources(args)
+    except Exception as exc:
+        print(f"Failed to resolve sources: {exc}")
+        sys.exit(1)
+
+    if args.validate_resources:
+        errors, valid_count = _validate_sources(urls, pdfs)
+        report: IngestionReport = {
+            "run_timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "resource_pack_name": pack_name,
+            "resource_pack_path": pack_path,
+            "processed_urls": urls,
+            "processed_pdfs": pdfs,
+            "documents_processed": valid_count,
+            "chunks_added": 0,
+            "skipped_duplicates": 0,
+            "errors": errors,
+            "total_duration_seconds": round(time.perf_counter() - start, 3),
+            "success_count": valid_count,
+            "failed_count": len(errors),
+        }
+        _write_report(report, args.save_report)
+        print(f"Validation finished. valid={valid_count}, errors={len(errors)}")
+        sys.exit(0 if len(errors) == 0 else 1)
+
+    from app.services.ingestion import ingest_pdf, ingest_web_page, reset_index
 
     if args.reset:
         print("Resetting index")
@@ -34,39 +219,71 @@ def main() -> None:
         "skipped_duplicates": 0,
         "errors": 0,
     }
+    report_errors: list[ReportError] = []
+    success_count = 0
 
-    for url in args.urls:
+    for url in urls:
         print(f"Ingesting: {url}")
         stats = ingest_web_page(url)
         totals["documents_processed"] += stats["documents_processed"]
         totals["chunks_added"] += stats["chunks_added"]
         totals["skipped_duplicates"] += stats["skipped_duplicates"]
         totals["errors"] += len(stats["errors"])
+        if stats["errors"]:
+            for err in stats["errors"]:
+                report_errors.append({"source": url, "error": err})
+        else:
+            success_count += 1
         print(f"Completed: {url} -> {stats['chunks_added']} chunks")
         for err in stats["errors"]:
             print(f"Error: {err}")
 
-    if args.pdf_dir:
-        pdf_dir = Path(args.pdf_dir)
-        pdf_files = sorted(pdf_dir.glob("*.pdf")) if pdf_dir.exists() else []
-        for pdf in pdf_files:
-            print(f"Ingesting PDF: {pdf}")
-            stats = ingest_pdf(str(pdf))
-            totals["documents_processed"] += stats["documents_processed"]
-            totals["chunks_added"] += stats["chunks_added"]
-            totals["skipped_duplicates"] += stats["skipped_duplicates"]
-            totals["errors"] += len(stats["errors"])
-            print(f"Completed PDF: {pdf.name} -> {stats['chunks_added']} chunks")
+    for pdf in pdfs:
+        print(f"Ingesting PDF: {pdf}")
+        stats = ingest_pdf(str(pdf))
+        totals["documents_processed"] += stats["documents_processed"]
+        totals["chunks_added"] += stats["chunks_added"]
+        totals["skipped_duplicates"] += stats["skipped_duplicates"]
+        totals["errors"] += len(stats["errors"])
+        if stats["errors"]:
             for err in stats["errors"]:
-                print(f"Error: {err}")
+                report_errors.append({"source": pdf, "error": err})
+        else:
+            success_count += 1
+        print(f"Completed PDF: {Path(pdf).name} -> {stats['chunks_added']} chunks")
+        for err in stats["errors"]:
+            print(f"Error: {err}")
+
+    duration = round(time.perf_counter() - start, 3)
+    report: IngestionReport = {
+        "run_timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "resource_pack_name": pack_name,
+        "resource_pack_path": pack_path,
+        "processed_urls": urls,
+        "processed_pdfs": pdfs,
+        "documents_processed": totals["documents_processed"],
+        "chunks_added": totals["chunks_added"],
+        "skipped_duplicates": totals["skipped_duplicates"],
+        "errors": report_errors,
+        "total_duration_seconds": duration,
+        "success_count": success_count,
+        "failed_count": len(report_errors),
+    }
+    _write_report(report, args.save_report)
 
     print(
         "Ingestion complete. "
         f"Documents: {totals['documents_processed']}, "
         f"Chunks added: {totals['chunks_added']}, "
         f"Duplicates skipped: {totals['skipped_duplicates']}, "
-        f"Errors: {totals['errors']}"
+        f"Errors: {totals['errors']}, "
+        f"Duration: {duration:.2f}s"
     )
+
+    total_sources = len(urls) + len(pdfs)
+    if total_sources > 0 and success_count == 0:
+        sys.exit(1)
+    sys.exit(0)
 
 
 if __name__ == "__main__":

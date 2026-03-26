@@ -19,5 +19,15 @@ def test_validate_citations_fails_missing_and_invalid() -> None:
     answer = "LangGraph controls state transitions. It supports conditional routing [9]."
     result = validate_citations(answer, 2)
     assert result["valid"] is False
-    assert any("Missing citation" in e for e in result["errors"])
-    assert any("Invalid citation indices" in e for e in result["errors"])
+    assert any("missing_citation" in e for e in result["errors"])
+    assert any("invalid_index" in e for e in result["errors"])
+
+
+def test_validate_citations_handles_bullets_and_connectives() -> None:
+    answer = """
+- LangGraph manages agent state transitions [1]
+- Therefore
+- It supports conditional edges [2]
+"""
+    result = validate_citations(answer, 2)
+    assert result["valid"] is True

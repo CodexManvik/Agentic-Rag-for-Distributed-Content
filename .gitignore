@@ -3,3 +3,6 @@
 backend/app/__pycache__/
 backend/app/services/__pycache__/
 backend/tests/__pycache__/
+backend/app/graph/__pycache__/
+chroma_data/
+.env
