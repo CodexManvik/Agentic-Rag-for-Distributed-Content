@@ -1,19 +1,41 @@
 services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: skn-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
     container_name: skn-backend
+    depends_on:
+      - ollama
     ports:
       - "8000:8000"
     environment:
-      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT}
-      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY}
-      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-02-15-preview}
-      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-qwen3.5:4b}
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
       CHROMA_COLLECTION_NAME: ${CHROMA_COLLECTION_NAME:-knowledge_base}
       CHROMA_PERSIST_DIRECTORY: /data/chroma
       RETRIEVAL_TOP_K: ${RETRIEVAL_TOP_K:-4}
+      RETRIEVAL_PER_QUERY_K: ${RETRIEVAL_PER_QUERY_K:-4}
+      RETRIEVAL_BM25_K: ${RETRIEVAL_BM25_K:-6}
+      RETRIEVAL_MIN_SCORE: ${RETRIEVAL_MIN_SCORE:-0.35}
+      RETRIEVAL_MIN_CHUNKS: ${RETRIEVAL_MIN_CHUNKS:-3}
+      RETRIEVAL_MIN_SOURCE_DIVERSITY: ${RETRIEVAL_MIN_SOURCE_DIVERSITY:-2}
+      RERANK_ENABLED: ${RERANK_ENABLED:-true}
+      DEBUG_TRACE_ENABLED: ${DEBUG_TRACE_ENABLED:-false}
+      MAX_RETRIEVAL_RETRIES: ${MAX_RETRIEVAL_RETRIES:-1}
+      MAX_VALIDATION_RETRIES: ${MAX_VALIDATION_RETRIES:-1}
+      CHUNK_SIZE: ${CHUNK_SIZE:-1200}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-200}
+      ALLOWED_SOURCE_DOMAINS: ${ALLOWED_SOURCE_DOMAINS:-python.langchain.com,docs.langchain.com,langchain.com}
+      PUBLIC_SOURCES_ONLY: ${PUBLIC_SOURCES_ONLY:-true}
     volumes:
       - chroma_data:/data/chroma
 
@@ -28,6 +50,8 @@ services:
       - "8501:8501"
     environment:
       BACKEND_URL: http://backend:8000/chat
+      BACKEND_HEALTH_URL: http://backend:8000/health
 
 volumes:
   chroma_data:
+  ollama_data:

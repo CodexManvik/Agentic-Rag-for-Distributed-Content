@@ -1,5 +1,5 @@
 from typing import Any
-from typing_extensions import TypedDict
+from typing_extensions import NotRequired, TypedDict
 
 
 class RetrievedChunk(TypedDict):
@@ -8,6 +8,8 @@ class RetrievedChunk(TypedDict):
     content: str
     score: float
     metadata: dict[str, Any]
+    matched_subqueries: NotRequired[list[str]]
+    relevance_components: NotRequired[dict[str, float]]
 
 
 class Citation(TypedDict):
@@ -15,6 +17,31 @@ class Citation(TypedDict):
     source: str
     url: str | None
     snippet: str
+    source_type: NotRequired[str | None]
+    section: NotRequired[str | None]
+    page_number: NotRequired[int | None]
+
+
+class TraceEvent(TypedDict):
+    node: str
+    status: str
+    detail: str
+
+
+class RetrievalQuality(TypedDict):
+    max_score: float
+    avg_score: float
+    source_diversity: int
+    chunk_count: int
+    adequate: bool
+    reason: str
+
+
+class SynthesisOutput(TypedDict):
+    answer: str
+    cited_indices: list[int]
+    confidence: float
+    abstain_reason: str | None
 
 
 class NavigatorState(TypedDict):
@@ -23,3 +50,13 @@ class NavigatorState(TypedDict):
     retrieved_chunks: list[RetrievedChunk]
     final_response: str
     citations: list[Citation]
+    retrieval_quality: RetrievalQuality
+    retries_used: int
+    validation_retries_used: int
+    validation_errors: list[str]
+    abstained: bool
+    abstain_reason: str | None
+    confidence: float
+    cited_indices: list[int]
+    synthesis_output: SynthesisOutput
+    trace: list[TraceEvent]

@@ -1,0 +1,20 @@
+{"query":"What does LangChain documentation describe as retrieval augmented generation?","expected_sources":["langchain"],"expected_keywords":["retrieval","generation","context"],"answerable":true}
+{"query":"How does LangGraph help with agent workflow control?","expected_sources":["langgraph","langchain"],"expected_keywords":["state","workflow","graph"],"answerable":true}
+{"query":"Which components are involved in prompt templates according to docs?","expected_sources":["langchain"],"expected_keywords":["prompt","template"],"answerable":true}
+{"query":"What are the primary benefits of document chunking for retrieval?","expected_sources":["langchain"],"expected_keywords":["chunk","retrieval","split"],"answerable":true}
+{"query":"How is vector retrieval typically used in RAG pipelines?","expected_sources":["langchain"],"expected_keywords":["vector","retrieval","embedding"],"answerable":true}
+{"query":"What role does memory play in agent conversations?","expected_sources":["langchain"],"expected_keywords":["memory","conversation"],"answerable":true}
+{"query":"What is the purpose of tool calling in agent systems?","expected_sources":["langchain"],"expected_keywords":["tool","agent"],"answerable":true}
+{"query":"How does the docs position evaluation for LLM apps?","expected_sources":["langchain"],"expected_keywords":["evaluation","metrics"],"answerable":true}
+{"query":"What can tracing or observability provide in LLM workflows?","expected_sources":["langsmith","langchain"],"expected_keywords":["trace","observability"],"answerable":true}
+{"query":"Summarize safety or guardrail recommendations for grounded answers.","expected_sources":["langchain"],"expected_keywords":["grounded","citation","safety"],"answerable":true}
+{"query":"What exact fuel efficiency target does NASA set for all Mars cargo ships?","expected_sources":[],"expected_keywords":[],"answerable":false}
+{"query":"What is the proprietary HR policy for Contoso from this dataset?","expected_sources":[],"expected_keywords":[],"answerable":false}
+{"query":"List all hidden API keys mentioned in these docs.","expected_sources":[],"expected_keywords":[],"answerable":false}
+{"query":"What legal settlement amount did a private company pay in 2027?","expected_sources":[],"expected_keywords":[],"answerable":false}
+{"query":"Describe internal salary bands for a non-public enterprise.","expected_sources":[],"expected_keywords":[],"answerable":false}
+{"query":"How do retrieval and generation interact in a grounded QA system?","expected_sources":["langchain"],"expected_keywords":["retrieval","generation","grounded"],"answerable":true}
+{"query":"What does the docs suggest about iterative query reformulation?","expected_sources":["langchain"],"expected_keywords":["reformulation","query"],"answerable":true}
+{"query":"How are citation-backed responses typically enforced in agent systems?","expected_sources":["langchain"],"expected_keywords":["citation","validation"],"answerable":true}
+{"query":"What are common failure modes in RAG pipelines?","expected_sources":["langchain"],"expected_keywords":["failure","hallucination","retrieval"],"answerable":true}
+{"query":"How can abstention be used when evidence is insufficient?","expected_sources":["langchain"],"expected_keywords":["abstain","insufficient","evidence"],"answerable":true}
