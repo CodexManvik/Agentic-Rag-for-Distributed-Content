@@ -135,18 +135,26 @@ Outputs:
 - `backend/eval/eval_report.json`
 - `backend/eval/eval_report.md`
 
-### Baseline vs Improved (template)
+### Measured Profile Metrics (latest run)
 
-| Metric | Baseline (linear, no validator) | Improved (adaptive + validation) |
+Source: `backend/eval/eval_report.json` (dataset size: 20)
+
+| Metric | Balanced | Low Latency |
 |---|---:|---:|
-| Hit@k | 0.41 | 0.68 |
-| MRR | 0.29 | 0.54 |
-| Citation precision | 0.52 | 0.84 |
-| Support coverage | 0.46 | 0.77 |
-| Abstain precision | 0.33 | 0.82 |
-| Abstain recall | 0.40 | 0.78 |
+| Hit@k | 0.700 | 0.700 |
+| MRR | 0.650 | 0.650 |
+| Citation precision | 0.850 | 0.833 |
+| Support coverage | 0.824 | 0.824 |
+| Abstain precision | 1.000 | 0.500 |
+| Abstain recall | 0.200 | 0.200 |
+| Latency P50 (ms) | 35814.4 | 21554.9 |
+| Latency P95 (ms) | 44514.4 | 24369.6 |
 
-Replace with your generated report values after running eval.
+Hardware + runtime profile used for this run:
+- Python: 3.11.0
+- Platform: Windows-10-10.0.26200-SP0
+- Chat model: qwen3.5:0.8b
+- Embedding model: nomic-embed-text:latest
 
 ## Local Setup
 
