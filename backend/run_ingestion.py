@@ -1,9 +1,11 @@
 import argparse
 import json
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, TypedDict
+from urllib.parse import urlparse
 
 import requests
 import yaml
@@ -37,6 +39,7 @@ class IngestionReport(TypedDict):
     total_duration_seconds: float
     success_count: int
     failed_count: int
+    source_results: list[dict[str, Any]]
 
 
 def _resolve_report_paths(json_path: str) -> tuple[Path, Path]:
@@ -58,28 +61,31 @@ def _load_resource_pack(path: str) -> dict[str, Any]:
     return parsed
 
 
-def _pick_sources(args: argparse.Namespace) -> tuple[list[str], list[str], str, str]:
+def _pick_sources(args: argparse.Namespace) -> tuple[list[str], list[str], list[str], str, str]:
     cli_urls = args.urls or []
     cli_pdfs: list[str] = []
+    cli_pdf_urls = args.pdf_urls or []
     if args.pdf_dir:
         pdf_dir = Path(args.pdf_dir)
         cli_pdfs = [str(p) for p in sorted(pdf_dir.glob("*.pdf"))] if pdf_dir.exists() else []
 
-    if cli_urls or cli_pdfs:
-        return cli_urls, cli_pdfs, "cli_overrides", ""
+    if cli_urls or cli_pdfs or cli_pdf_urls:
+        return cli_urls, cli_pdfs, cli_pdf_urls, "cli_overrides", ""
 
     if args.use_pack:
         pack = _load_resource_pack(args.resource_pack)
         pack_urls = pack.get("web_urls", [])
         pack_pdfs = pack.get("pdf_paths", [])
+        pack_pdf_urls = pack.get("pdf_urls", [])
         urls = [str(u) for u in pack_urls if isinstance(u, str)]
         pdfs = [str(p) for p in pack_pdfs if isinstance(p, str)]
-        return urls, pdfs, str(pack.get("name", "unknown_pack")), str(Path(args.resource_pack))
+        pdf_urls = [str(u) for u in pack_pdf_urls if isinstance(u, str)]
+        return urls, pdfs, pdf_urls, str(pack.get("name", "unknown_pack")), str(Path(args.resource_pack))
 
-    return list(DEFAULT_URLS), [], "built_in_defaults", ""
+    return list(DEFAULT_URLS), [], [], "built_in_defaults", ""
 
 
-def _validate_sources(urls: list[str], pdfs: list[str]) -> tuple[list[ReportError], int]:
+def _validate_sources(urls: list[str], pdfs: list[str], pdf_urls: list[str]) -> tuple[list[ReportError], int]:
     errors: list[ReportError] = []
     valid_count = 0
 
@@ -103,6 +109,22 @@ def _validate_sources(urls: list[str], pdfs: list[str]) -> tuple[list[ReportErro
             errors.append({"source": pdf, "error": "PDF file not found"})
         else:
             valid_count += 1
+
+    for pdf_url in pdf_urls:
+        allowed, host = is_url_allowlisted(pdf_url)
+        if not allowed:
+            errors.append({"source": pdf_url, "error": f"Domain '{host}' is not allowlisted"})
+            continue
+        try:
+            response = requests.get(pdf_url, timeout=20)
+            if response.status_code >= 400:
+                errors.append({"source": pdf_url, "error": f"HTTP {response.status_code}"})
+            elif "pdf" not in response.headers.get("content-type", "").lower() and not pdf_url.lower().endswith(".pdf"):
+                errors.append({"source": pdf_url, "error": "URL does not appear to be a PDF"})
+            else:
+                valid_count += 1
+        except Exception as exc:
+            errors.append({"source": pdf_url, "error": str(exc)})
 
     return errors, valid_count
 
@@ -143,6 +165,19 @@ def _write_report(report: IngestionReport, report_json_path: str) -> None:
     else:
         lines.append("- none")
     lines.append("")
+    lines.append("## Source Results")
+    if report.get("source_results"):
+        for item in report["source_results"]:
+            lines.append(
+                "- "
+                f"{item.get('source_type')} | {item.get('status')} | {item.get('domain')} | "
+                f"chunks={item.get('chunks_added', 0)} | source={item.get('source')}"
+            )
+            if item.get("error"):
+                lines.append(f"  error: {item['error']}")
+    else:
+        lines.append("- none")
+    lines.append("")
 
     with md_path.open("w", encoding="utf-8") as f:
         f.write("\n".join(lines))
@@ -151,6 +186,7 @@ def _write_report(report: IngestionReport, report_json_path: str) -> None:
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Ingest public web pages and PDFs into Chroma")
     parser.add_argument("--urls", nargs="*", default=None, help="List of public URLs")
+    parser.add_argument("--pdf-urls", nargs="*", default=None, help="List of public PDF URLs")
     parser.add_argument("--pdf-dir", default="", help="Directory containing PDFs")
     parser.add_argument("--reset", action="store_true", help="Reset index before ingestion")
     parser.add_argument(
@@ -182,19 +218,19 @@ def main() -> None:
     print("Starting ingestion run")
 
     try:
-        urls, pdfs, pack_name, pack_path = _pick_sources(args)
+        urls, pdfs, pdf_urls, pack_name, pack_path = _pick_sources(args)
     except Exception as exc:
         print(f"Failed to resolve sources: {exc}")
         sys.exit(1)
 
     if args.validate_resources:
-        errors, valid_count = _validate_sources(urls, pdfs)
+        errors, valid_count = _validate_sources(urls, pdfs, pdf_urls)
         report: IngestionReport = {
             "run_timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "resource_pack_name": pack_name,
             "resource_pack_path": pack_path,
             "processed_urls": urls,
-            "processed_pdfs": pdfs,
+            "processed_pdfs": [*pdfs, *pdf_urls],
             "documents_processed": valid_count,
             "chunks_added": 0,
             "skipped_duplicates": 0,
@@ -202,6 +238,7 @@ def main() -> None:
             "total_duration_seconds": round(time.perf_counter() - start, 3),
             "success_count": valid_count,
             "failed_count": len(errors),
+            "source_results": [],
         }
         _write_report(report, args.save_report)
         print(f"Validation finished. valid={valid_count}, errors={len(errors)}")
@@ -221,6 +258,7 @@ def main() -> None:
     }
     report_errors: list[ReportError] = []
     success_count = 0
+    source_results: list[dict[str, Any]] = []
 
     for url in urls:
         print(f"Ingesting: {url}")
@@ -232,8 +270,32 @@ def main() -> None:
         if stats["errors"]:
             for err in stats["errors"]:
                 report_errors.append({"source": url, "error": err})
+            source_results.append(
+                {
+                    "source": url,
+                    "source_type": "web",
+                    "domain": urlparse(url).netloc.lower(),
+                    "status": "failed",
+                    "documents_processed": stats["documents_processed"],
+                    "chunks_added": stats["chunks_added"],
+                    "skipped_duplicates": stats["skipped_duplicates"],
+                    "error": "; ".join(stats["errors"]),
+                }
+            )
         else:
             success_count += 1
+            source_results.append(
+                {
+                    "source": url,
+                    "source_type": "web",
+                    "domain": urlparse(url).netloc.lower(),
+                    "status": "ok",
+                    "documents_processed": stats["documents_processed"],
+                    "chunks_added": stats["chunks_added"],
+                    "skipped_duplicates": stats["skipped_duplicates"],
+                    "error": None,
+                }
+            )
         print(f"Completed: {url} -> {stats['chunks_added']} chunks")
         for err in stats["errors"]:
             print(f"Error: {err}")
@@ -248,9 +310,95 @@ def main() -> None:
         if stats["errors"]:
             for err in stats["errors"]:
                 report_errors.append({"source": pdf, "error": err})
+            source_results.append(
+                {
+                    "source": pdf,
+                    "source_type": "pdf_local",
+                    "domain": "local",
+                    "status": "failed",
+                    "documents_processed": stats["documents_processed"],
+                    "chunks_added": stats["chunks_added"],
+                    "skipped_duplicates": stats["skipped_duplicates"],
+                    "error": "; ".join(stats["errors"]),
+                }
+            )
         else:
             success_count += 1
+            source_results.append(
+                {
+                    "source": pdf,
+                    "source_type": "pdf_local",
+                    "domain": "local",
+                    "status": "ok",
+                    "documents_processed": stats["documents_processed"],
+                    "chunks_added": stats["chunks_added"],
+                    "skipped_duplicates": stats["skipped_duplicates"],
+                    "error": None,
+                }
+            )
         print(f"Completed PDF: {Path(pdf).name} -> {stats['chunks_added']} chunks")
+        for err in stats["errors"]:
+            print(f"Error: {err}")
+
+    for pdf_url in pdf_urls:
+        print(f"Ingesting PDF URL: {pdf_url}")
+        try:
+            allowed, host = is_url_allowlisted(pdf_url)
+            if not allowed:
+                raise ValueError(f"Domain '{host}' is not allowlisted")
+            response = requests.get(pdf_url, timeout=25)
+            response.raise_for_status()
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                tmp.write(response.content)
+                tmp_path = tmp.name
+            stats = ingest_pdf(tmp_path)
+            try:
+                Path(tmp_path).unlink(missing_ok=True)
+            except Exception:
+                pass
+        except Exception as exc:
+            stats = {
+                "documents_processed": 1,
+                "chunks_added": 0,
+                "skipped_duplicates": 0,
+                "errors": [str(exc)],
+            }
+
+        totals["documents_processed"] += stats["documents_processed"]
+        totals["chunks_added"] += stats["chunks_added"]
+        totals["skipped_duplicates"] += stats["skipped_duplicates"]
+        totals["errors"] += len(stats["errors"])
+        domain = urlparse(pdf_url).netloc.lower()
+        if stats["errors"]:
+            for err in stats["errors"]:
+                report_errors.append({"source": pdf_url, "error": err})
+            source_results.append(
+                {
+                    "source": pdf_url,
+                    "source_type": "pdf_url",
+                    "domain": domain,
+                    "status": "failed",
+                    "documents_processed": stats["documents_processed"],
+                    "chunks_added": stats["chunks_added"],
+                    "skipped_duplicates": stats["skipped_duplicates"],
+                    "error": "; ".join(stats["errors"]),
+                }
+            )
+        else:
+            success_count += 1
+            source_results.append(
+                {
+                    "source": pdf_url,
+                    "source_type": "pdf_url",
+                    "domain": domain,
+                    "status": "ok",
+                    "documents_processed": stats["documents_processed"],
+                    "chunks_added": stats["chunks_added"],
+                    "skipped_duplicates": stats["skipped_duplicates"],
+                    "error": None,
+                }
+            )
+        print(f"Completed PDF URL: {pdf_url} -> {stats['chunks_added']} chunks")
         for err in stats["errors"]:
             print(f"Error: {err}")
 
@@ -260,7 +408,7 @@ def main() -> None:
         "resource_pack_name": pack_name,
         "resource_pack_path": pack_path,
         "processed_urls": urls,
-        "processed_pdfs": pdfs,
+        "processed_pdfs": [*pdfs, *pdf_urls],
         "documents_processed": totals["documents_processed"],
         "chunks_added": totals["chunks_added"],
         "skipped_duplicates": totals["skipped_duplicates"],
@@ -268,6 +416,7 @@ def main() -> None:
         "total_duration_seconds": duration,
         "success_count": success_count,
         "failed_count": len(report_errors),
+        "source_results": source_results,
     }
     _write_report(report, args.save_report)
 

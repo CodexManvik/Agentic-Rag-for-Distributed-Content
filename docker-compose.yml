@@ -42,7 +42,7 @@ services:
       MODEL_MAX_OUTPUT_TOKENS: ${MODEL_MAX_OUTPUT_TOKENS:-420}
       CHUNK_SIZE: ${CHUNK_SIZE:-1200}
       CHUNK_OVERLAP: ${CHUNK_OVERLAP:-200}
-      ALLOWED_SOURCE_DOMAINS: ${ALLOWED_SOURCE_DOMAINS:-python.langchain.com,docs.langchain.com,langchain.com}
+      ALLOWED_SOURCE_DOMAINS: ${ALLOWED_SOURCE_DOMAINS:-support.atlassian.com,confluence.atlassian.com,docs.langchain.com,python.langchain.com,langchain.com,atlassian.com,www.atlassian.com,www.langchain.com,arxiv.org,cdn.openai.com,openai.com,www.openai.com,anthropic.com,www.anthropic.com,ai.google.dev,developers.google.com,research.google,paperswithcode.com,langchain-ai.github.io,github.io}
       PUBLIC_SOURCES_ONLY: ${PUBLIC_SOURCES_ONLY:-true}
     volumes:
       - chroma_data:/data/chroma

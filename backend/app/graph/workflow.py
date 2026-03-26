@@ -1,3 +1,6 @@
+import time
+from typing import Callable
+
 from langgraph.graph import END, StateGraph
 
 from app.config import settings
@@ -14,7 +17,27 @@ from app.graph.nodes import (
 from app.graph.state import NavigatorState
 
 
+def _timed_node(name: str, fn: Callable[[NavigatorState], NavigatorState]) -> Callable[[NavigatorState], NavigatorState]:
+    def wrapped(state: NavigatorState) -> NavigatorState:
+        start = time.perf_counter()
+        out = fn(state)
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        timings = out.get("stage_timings", {})
+        timings[name] = round(float(timings.get(name, 0.0)) + elapsed_ms, 2)
+        out["stage_timings"] = timings
+        if out.get("trace"):
+            last = out["trace"][-1]
+            if last.get("node") == name:
+                last["duration_ms"] = round(elapsed_ms, 2)
+        return out
+
+    return wrapped
+
+
 def _route_after_adequacy(state: NavigatorState) -> str:
+    if state["abstained"]:
+        return "abstain"
+
     quality = state["retrieval_quality"]
     if quality["adequate"]:
         return "synthesis"
@@ -39,14 +62,14 @@ def _route_after_validation(state: NavigatorState) -> str:
 
 def build_graph():
     graph = StateGraph(NavigatorState)
-    graph.add_node("planning", planning_agent)
-    graph.add_node("retrieval", retrieval_agent)
-    graph.add_node("adequacy", adequacy_check_agent)
-    graph.add_node("reformulation", reformulation_agent)
-    graph.add_node("synthesis", synthesis_agent)
-    graph.add_node("citation_validation", citation_validation_agent)
-    graph.add_node("abstain", abstain_node)
-    graph.add_node("finalize", finalize_node)
+    graph.add_node("planning", _timed_node("planning", planning_agent))
+    graph.add_node("retrieval", _timed_node("retrieval", retrieval_agent))
+    graph.add_node("adequacy", _timed_node("adequacy", adequacy_check_agent))
+    graph.add_node("reformulation", _timed_node("reformulation", reformulation_agent))
+    graph.add_node("synthesis", _timed_node("synthesis", synthesis_agent))
+    graph.add_node("citation_validation", _timed_node("citation_validation", citation_validation_agent))
+    graph.add_node("abstain", _timed_node("abstain", abstain_node))
+    graph.add_node("finalize", _timed_node("finalize", finalize_node))
 
     graph.set_entry_point("planning")
     graph.add_edge("planning", "retrieval")
@@ -107,5 +130,6 @@ def run_workflow(query: str) -> NavigatorState:
             "abstain_reason": None,
         },
         "trace": [],
+        "stage_timings": {},
     }
     return workflow.invoke(initial_state)

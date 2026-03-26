@@ -14,6 +14,23 @@ web_urls:
   - https://python.langchain.com/docs/introduction/
   - https://www.atlassian.com/software/confluence/demo
   - https://www.langchain.com/retrieval
+  - https://langchain-ai.github.io/langgraph/concepts/why-langgraph/
+  - https://langchain-ai.github.io/langgraph/how-tos/
+  - https://docs.langchain.com/oss/python/langchain/overview
+  - https://ai.google.dev/gemini-api/docs
+  - https://www.anthropic.com/engineering
+  - https://openai.com/index/introducing-structured-outputs-in-the-api/
+pdf_urls:
+  - https://arxiv.org/pdf/2005.11401.pdf
+  - https://arxiv.org/pdf/2312.10997.pdf
+  - https://arxiv.org/pdf/2310.11511.pdf
+  - https://arxiv.org/pdf/2309.07864.pdf
+  - https://arxiv.org/pdf/2201.11903.pdf
+  - https://arxiv.org/pdf/1706.03762.pdf
+  - https://arxiv.org/pdf/2307.03172.pdf
+  - https://arxiv.org/pdf/2401.18059.pdf
+  - https://arxiv.org/pdf/2404.07143.pdf
+  - https://arxiv.org/pdf/2402.05102.pdf
 pdf_paths: []
 ingestion_profile:
   chunk_size: 1200

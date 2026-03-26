@@ -1,10 +1,12 @@
 import json
 import re
+from datetime import datetime, timezone
 from typing import Any
 
 from app.config import settings
 from app.graph.state import Citation, NavigatorState, SynthesisOutput
 from app.services.guardrails import validate_citations
+from app.services.policy import detect_policy_scope_violation
 from app.services.llm import ModelInvocationError, invoke_chat_with_timeout
 from app.services.vector_store import assess_retrieval_adequacy, query_chunks
 
@@ -29,7 +31,14 @@ def _message_to_text(message: Any) -> str:
 
 
 def _trace(state: NavigatorState, node: str, status: str, detail: str) -> None:
-    state["trace"].append({"node": node, "status": status, "detail": detail})
+    state["trace"].append(
+        {
+            "node": node,
+            "status": status,
+            "detail": detail,
+            "ts": datetime.now(timezone.utc).isoformat(),
+        }
+    )
 
 
 def _unique_queries(lines: list[str]) -> list[str]:
@@ -90,7 +99,26 @@ def retrieval_agent(state: NavigatorState) -> NavigatorState:
 
 
 def adequacy_check_agent(state: NavigatorState) -> NavigatorState:
-    quality = assess_retrieval_adequacy(state["retrieved_chunks"])
+    blocked, reason, matches = detect_policy_scope_violation(state["original_query"])
+    if blocked:
+        state["abstained"] = True
+        state["abstain_reason"] = reason
+        state["retrieval_quality"] = {
+            "max_score": 0.0,
+            "avg_score": 0.0,
+            "source_diversity": 0,
+            "chunk_count": len(state["retrieved_chunks"]),
+            "adequate": False,
+            "reason": "Policy scope violation",
+        }
+        _trace(state, "adequacy", "failed", f"policy_block: matched={len(matches)}")
+        return state
+
+    quality = assess_retrieval_adequacy(
+        state["retrieved_chunks"],
+        query=state["original_query"],
+        sub_queries=state["sub_queries"],
+    )
     state["retrieval_quality"] = quality
     status = "ok" if quality["adequate"] else "weak"
     _trace(state, "adequacy", status, quality["reason"])

@@ -109,6 +109,29 @@ def _tokenize(text: str) -> list[str]:
     return re.findall(r"[a-z0-9]+", text.lower())
 
 
+_STOPWORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how", "in", "is", "it",
+    "of", "on", "or", "that", "the", "to", "what", "when", "where", "who", "why", "with",
+}
+
+
+def _query_terms(query: str) -> set[str]:
+    return {t for t in _tokenize(query) if len(t) > 2 and t not in _STOPWORDS}
+
+
+def _query_entities(query: str) -> set[str]:
+    entities = set(re.findall(r"\b[A-Z][a-zA-Z0-9_-]{2,}\b", query))
+    acronyms = set(re.findall(r"\b[A-Z]{2,}\b", query))
+    return {e.lower() for e in (entities | acronyms)}
+
+
+def _is_hard_query(query: str, sub_queries: list[str] | None = None) -> bool:
+    q = query.lower()
+    if any(k in q for k in ["compare", "difference", "versus", "tradeoff", "multi-hop", "cross-source"]):
+        return True
+    return bool(sub_queries and len(sub_queries) >= 3)
+
+
 def _bm25_candidates(query: str, k: int) -> dict[str, float]:
     if not settings.hybrid_retrieval_enabled:
         return {}
@@ -211,7 +234,11 @@ def query_chunks(queries: Iterable[str], top_k: int | None = None) -> list[Retri
     return ranked[:final_k]
 
 
-def assess_retrieval_adequacy(chunks: list[RetrievedChunk]) -> RetrievalQuality:
+def assess_retrieval_adequacy(
+    chunks: list[RetrievedChunk],
+    query: str = "",
+    sub_queries: list[str] | None = None,
+) -> RetrievalQuality:
     if not chunks:
         return {
             "max_score": 0.0,
@@ -228,12 +255,35 @@ def assess_retrieval_adequacy(chunks: list[RetrievedChunk]) -> RetrievalQuality:
     avg_score = sum(scores) / len(scores)
     chunk_count = len(chunks)
 
-    adequate = (
-        max_score >= settings.retrieval_min_score
-        and chunk_count >= settings.retrieval_min_chunks
-        and source_diversity >= settings.retrieval_min_source_diversity
+    hard_query = _is_hard_query(query, sub_queries)
+    min_score = settings.retrieval_min_score + (settings.retrieval_hard_query_min_score_boost if hard_query else 0.0)
+    min_diversity = max(
+        settings.retrieval_min_source_diversity,
+        settings.retrieval_hard_query_min_source_diversity if hard_query else settings.retrieval_min_source_diversity,
     )
-    reason = "Adequate evidence" if adequate else "Evidence quality below threshold"
+
+    query_terms = _query_terms(query)
+    query_entities = _query_entities(query)
+    corpus_text = "\n".join(str(c["content"]) for c in chunks)
+    corpus_terms = set(_tokenize(corpus_text))
+
+    term_overlap_ratio = (len(query_terms & corpus_terms) / len(query_terms)) if query_terms else 1.0
+    entity_overlap_ratio = (len(query_entities & corpus_terms) / len(query_entities)) if query_entities else 1.0
+
+    adequate = (
+        max_score >= min_score
+        and chunk_count >= settings.retrieval_min_chunks
+        and source_diversity >= min_diversity
+        and term_overlap_ratio >= settings.retrieval_query_overlap_min
+        and entity_overlap_ratio >= settings.retrieval_entity_overlap_min
+    )
+
+    if adequate:
+        reason = "Adequate evidence"
+    elif term_overlap_ratio < settings.retrieval_query_overlap_min or entity_overlap_ratio < settings.retrieval_entity_overlap_min:
+        reason = "Weak topical match to query intent"
+    else:
+        reason = "Evidence quality below threshold"
     return {
         "max_score": max_score,
         "avg_score": avg_score,

@@ -66,6 +66,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
         abstain_reason=result["abstain_reason"],
         trace=trace,
         retrieval_quality=retrieval_quality,
+        stage_timings=result.get("stage_timings", {}),
     )
 
 

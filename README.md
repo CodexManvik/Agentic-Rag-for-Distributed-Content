@@ -53,6 +53,7 @@ Why this is truly agentic:
   - structured cited index sanity checks
 - Regenerate-once policy with stricter synthesis constraints.
 - Hard fallback to abstention if validation still fails.
+- Policy-aware abstention guard blocks private/internal/confidential intent before synthesis.
 
 ## Retrieval Quality Upgrades
 
@@ -67,6 +68,7 @@ Why this is truly agentic:
   - ingestion timestamp
 - Deduplication by content hash at ingestion time.
 - Adequacy scoring based on score threshold, chunk count, and source diversity.
+- Tightened adequacy scoring with hard-query boosts and query/entity overlap checks to prevent overconfident retrieval matches.
 
 ## Resource Pack
 
@@ -97,6 +99,17 @@ Optional demo-context pages:
 - https://www.atlassian.com/software/confluence/demo
 - https://www.langchain.com/retrieval
 
+Additional long-form technical references:
+- https://langchain-ai.github.io/langgraph/concepts/why-langgraph/
+- https://langchain-ai.github.io/langgraph/how-tos/
+- https://docs.langchain.com/oss/python/langchain/overview
+- https://ai.google.dev/gemini-api/docs
+- https://www.anthropic.com/engineering
+- https://openai.com/index/introducing-structured-outputs-in-the-api/
+
+Public PDF references (resource pack `pdf_urls`):
+- 10 public arXiv technical PDFs are included in `backend/resources/resource_pack.yaml` for mixed long-form ingestion.
+
 ### Resource Pack Commands
 
 ```bash
@@ -109,6 +122,10 @@ Source priority order used by CLI:
 1. explicit CLI URLs/PDF directory
 2. resource pack values when `--use-pack`
 3. built-in defaults
+
+Source metadata and reporting:
+- Ingestion report now includes source-level status with `source_type`, `domain`, chunks added, and fail reasons.
+- Report artifacts: `backend/resources/ingestion_report.json` and `backend/resources/ingestion_report.md`.
 
 Use optional snapshot utility:
 
@@ -124,12 +141,21 @@ Location: `backend/eval`
 
 Includes:
 - `dataset.jsonl` (20 QA entries, answerable + unanswerable)
+- `dataset_dev.jsonl` and `dataset_hidden.jsonl` (split datasets to reduce leakage)
+- `eval_matrix_target.json` (target bucket counts for 120-question balanced matrix)
+- `generate_candidate_dataset.py` (semi-automated candidate generation from ingested sections)
+- `prepare_dataset_splits.py` (schema upgrade + dev/hidden split)
+- `check_matrix_coverage.py` (bucket coverage and abstain-ratio validation)
 - `run_eval.py` computes:
   - Hit@k
   - MRR
   - citation precision
   - support coverage
   - abstention precision and recall
+  - per-bucket Hit@k
+  - per-difficulty Hit@k
+  - citation precision by source type
+  - abstain-subset metrics (`should_abstain` precision/recall)
 
 Outputs:
 - `backend/eval/eval_report.json`
@@ -155,6 +181,114 @@ Hardware + runtime profile used for this run:
 - Platform: Windows-10-10.0.26200-SP0
 - Chat model: qwen3.5:0.8b
 - Embedding model: nomic-embed-text:latest
+
+### Baseline vs Current Evidence
+
+Historical baseline (initial linear MVP without adaptive routing/validator hardening):
+
+| Metric | Historical Baseline | Current Balanced |
+|---|---:|---:|
+| Hit@k | 0.410 | 0.700 |
+| MRR | 0.290 | 0.650 |
+| Citation precision | 0.520 | 0.850 |
+| Support coverage | 0.460 | 0.824 |
+
+This shows measurable quality gains after adding adaptive routing, citation validation, and abstention controls.
+
+### Failure Categories (from latest eval)
+
+Balanced profile (`dataset_size=20`):
+- `false_abstain`: 0/15 answerable queries
+- `missed_abstain`: 4/5 unanswerable queries
+- `good_abstain`: 1/5 unanswerable queries
+- `retrieval_adequate_count`: 19/20
+
+Low-latency profile (`dataset_size=20`):
+- `false_abstain`: 1/15 answerable queries
+- `missed_abstain`: 4/5 unanswerable queries
+- `good_abstain`: 1/5 unanswerable queries
+- `retrieval_adequate_count`: 18/20
+
+Interpretation:
+- Current limitation is conservative abstention recall on hard unanswerable prompts.
+- Next planned fix: strengthen weak-evidence routing thresholds and add contradiction/conflict checks before synthesis.
+
+### Ingestion and Scope Evidence
+
+Resource-pack ingestion evidence (`backend/resources/ingestion_report.json`):
+- `documents_processed`: 12
+- `chunks_added`: 97
+- `skipped_duplicates`: 18
+- `success_count`: 12
+- `failed_count`: 0
+- Confluence/Atlassian URLs included: 6/12
+
+Runtime policy proof:
+- Domain allowlist enforced via `ALLOWED_SOURCE_DOMAINS`.
+- Public-source-only posture enforced via `PUBLIC_SOURCES_ONLY=true`.
+- Disallowed-domain ingestion path is covered by tests.
+
+## Dataset Schema (Strengthened)
+
+Each eval row supports:
+- `id`
+- `query`
+- `expected_answer`
+- `must_cite_sources`
+- `difficulty` (`easy|medium|hard`)
+- `requires_multi_hop` (bool)
+- `should_abstain` (bool)
+- `reason_if_abstain`
+- `tags`
+- `bucket`
+
+Backward compatibility:
+- Legacy fields such as `expected_sources` and `answerable` are normalized automatically by `run_eval.py`.
+
+## Balanced Eval Matrix Target
+
+Target bucket counts (`backend/eval/eval_matrix_target.json`):
+- Fact lookup: 20
+- Multi-hop synthesis: 25
+- Comparison questions: 20
+- Procedure/how-to: 15
+- Edge ambiguity: 10
+- Unanswerable/out-of-scope: 20
+- Adversarial/noisy phrasing: 10
+
+Total target: 120
+
+Abstain-required minimum ratio: 15% (recommended 15-20%).
+
+## Dataset Build Workflow
+
+1. Expand and ingest sources:
+```bash
+make ingest-pack
+```
+
+2. Generate candidate dataset rows from ingested section metadata:
+```bash
+make eval-candidates
+```
+
+3. Manually validate and curate gold labels (`expected_answer`, `must_cite_sources`, abstain flags).
+
+4. Prepare dev/hidden split:
+```bash
+make eval-split
+```
+
+5. Check matrix coverage:
+```bash
+make eval-matrix-check
+```
+
+6. Run profile evaluation on split datasets:
+```bash
+make eval-dev
+make eval-hidden
+```
 
 ## Local Setup
 
@@ -215,8 +349,36 @@ make ingest-report
 make resources-validate
 make run
 make eval
+make eval-dev
+make eval-hidden
+make eval-split
+make eval-candidates
+make eval-build-demo
+make eval-matrix-check
+make demo-prewarm
+make demo-cache
 make test
 ```
+
+## Live Demo Reliability Plan
+
+- Default runtime profile for live demo: `low_latency`.
+- Prewarm models and BM25 cache before judging:
+```bash
+make demo-prewarm
+```
+- Keep cached-answer backup artifact for network/runtime fallback:
+```bash
+make demo-cache
+```
+
+## Final-Metrics Publish Gates
+
+Before calling metrics "final" for judge deck:
+- Abstain precision > 0.80
+- Abstain recall > 0.70
+- Dataset has 60+ rows
+- All 7 matrix buckets represented (preferably at target counts)
 
 ## API
 

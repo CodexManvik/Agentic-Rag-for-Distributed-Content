@@ -1,8 +1,9 @@
 {
-  "dataset_size": 20,
+  "dataset_size": 4,
   "runtime": {
     "python": "3.11.0",
     "platform": "Windows-10-10.0.26200-SP0",
+    "dataset_path": "backend\\eval\\dataset_dev.jsonl",
     "runtime_profile_compared": [
       "balanced",
       "low_latency"
@@ -13,98 +14,56 @@
   "profiles": {
     "balanced": {
       "profile": "balanced",
-      "dataset_size": 20,
+      "dataset_size": 4,
       "metrics": {
-        "hit_at_k": 0.7,
-        "mrr": 0.65,
-        "citation_precision": 0.85,
-        "support_coverage": 0.8235294117647058,
-        "abstain_precision": 1.0,
-        "abstain_recall": 0.2,
-        "latency_p50_ms": 35814.417599998706,
-        "latency_p95_ms": 44514.40509999884
+        "hit_at_k": 0.75,
+        "mrr": 0.625,
+        "citation_precision": 0.8333333333333334,
+        "support_coverage": 1.0,
+        "abstain_precision": 0.0,
+        "abstain_recall": 0.0,
+        "latency_p50_ms": 39056.29969999791,
+        "latency_p95_ms": 50317.45850000152
+      },
+      "per_bucket": {
+        "hit_at_k": {
+          "procedure_how_to": 1.0,
+          "fact_lookup": 1.0,
+          "unanswerable_out_of_scope": 0.0
+        }
+      },
+      "per_difficulty": {
+        "hit_at_k": {
+          "medium": 0.75
+        }
+      },
+      "citation_precision_by_source_type": {
+        "web": 0.8333333333333334
+      },
+      "abstain_subset": {
+        "required_count": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 1
       },
       "validation_error_categories": {},
       "rows": [
         {
-          "query": "What does LangChain documentation describe as retrieval augmented generation?",
+          "query": "How can abstention be used when evidence is insufficient?",
+          "id": "row-0020",
           "answerable": true,
           "abstained": false,
-          "hit": true,
-          "rr": 1.0,
-          "latency_ms": 35814.42,
-          "retrieval_quality": {
-            "max_score": 0.641240952346837,
-            "avg_score": 0.4613543728980297,
-            "source_diversity": 2,
-            "chunk_count": 4,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "How does LangGraph help with agent workflow control?",
-          "answerable": true,
-          "abstained": false,
+          "bucket": "procedure_how_to",
+          "difficulty": "medium",
           "hit": true,
           "rr": 0.5,
-          "latency_ms": 36019.42,
+          "latency_ms": 50317.46,
           "retrieval_quality": {
-            "max_score": 0.4221090309869681,
-            "avg_score": 0.4147065281794833,
-            "source_diversity": 4,
-            "chunk_count": 4,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "Which components are involved in prompt templates according to docs?",
-          "answerable": true,
-          "abstained": false,
-          "hit": true,
-          "rr": 1.0,
-          "latency_ms": 31940.46,
-          "retrieval_quality": {
-            "max_score": 0.3925341883101894,
-            "avg_score": 0.3841292192846594,
-            "source_diversity": 2,
-            "chunk_count": 4,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "What are the primary benefits of document chunking for retrieval?",
-          "answerable": true,
-          "abstained": false,
-          "hit": true,
-          "rr": 1.0,
-          "latency_ms": 31873.48,
-          "retrieval_quality": {
-            "max_score": 0.6073015172654733,
-            "avg_score": 0.4408698203363157,
-            "source_diversity": 2,
-            "chunk_count": 4,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "How is vector retrieval typically used in RAG pipelines?",
-          "answerable": true,
-          "abstained": false,
-          "hit": true,
-          "rr": 1.0,
-          "latency_ms": 37122.62,
-          "retrieval_quality": {
-            "max_score": 0.6841673802105805,
-            "avg_score": 0.5207998006259627,
-            "source_diversity": 2,
+            "max_score": 0.5493122654010387,
+            "avg_score": 0.398435496377712,
+            "source_diversity": 3,
             "chunk_count": 4,
             "adequate": true,
             "reason": "Adequate evidence"
@@ -113,11 +72,14 @@
         },
         {
           "query": "What role does memory play in agent conversations?",
+          "id": "row-0006",
           "answerable": true,
           "abstained": false,
+          "bucket": "fact_lookup",
+          "difficulty": "medium",
           "hit": true,
           "rr": 1.0,
-          "latency_ms": 34485.64,
+          "latency_ms": 39056.3,
           "retrieval_quality": {
             "max_score": 0.6983778131566711,
             "avg_score": 0.5768835651303397,
@@ -129,148 +91,15 @@
           "validation_errors": []
         },
         {
-          "query": "What is the purpose of tool calling in agent systems?",
-          "answerable": true,
-          "abstained": false,
-          "hit": true,
-          "rr": 1.0,
-          "latency_ms": 35395.22,
-          "retrieval_quality": {
-            "max_score": 0.6946987858536113,
-            "avg_score": 0.6082538321399084,
-            "source_diversity": 3,
-            "chunk_count": 4,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "How does the docs position evaluation for LLM apps?",
-          "answerable": true,
-          "abstained": false,
-          "hit": false,
-          "rr": 0.0,
-          "latency_ms": 44514.41,
-          "retrieval_quality": {
-            "max_score": 0.5621768480800359,
-            "avg_score": 0.41850618801524353,
-            "source_diversity": 3,
-            "chunk_count": 4,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "What can tracing or observability provide in LLM workflows?",
-          "answerable": true,
-          "abstained": false,
-          "hit": true,
-          "rr": 1.0,
-          "latency_ms": 44847.76,
-          "retrieval_quality": {
-            "max_score": 0.37485223010197727,
-            "avg_score": 0.3671929439331192,
-            "source_diversity": 2,
-            "chunk_count": 4,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "Summarize safety or guardrail recommendations for grounded answers.",
-          "answerable": true,
-          "abstained": false,
-          "hit": true,
-          "rr": 1.0,
-          "latency_ms": 37679.73,
-          "retrieval_quality": {
-            "max_score": 0.6586175114180701,
-            "avg_score": 0.4343807049173074,
-            "source_diversity": 2,
-            "chunk_count": 4,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "What exact fuel efficiency target does NASA set for all Mars cargo ships?",
-          "answerable": false,
-          "abstained": false,
-          "hit": false,
-          "rr": 0.0,
-          "latency_ms": 40024.2,
-          "retrieval_quality": {
-            "max_score": 0.36453898919325695,
-            "avg_score": 0.3612133552236163,
-            "source_diversity": 3,
-            "chunk_count": 4,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "What is the proprietary HR policy for Contoso from this dataset?",
-          "answerable": false,
-          "abstained": false,
-          "hit": false,
-          "rr": 0.0,
-          "latency_ms": 36827.1,
-          "retrieval_quality": {
-            "max_score": 0.3914018367233168,
-            "avg_score": 0.38884333351528755,
-            "source_diversity": 2,
-            "chunk_count": 4,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "List all hidden API keys mentioned in these docs.",
-          "answerable": false,
-          "abstained": false,
-          "hit": false,
-          "rr": 0.0,
-          "latency_ms": 34839.19,
-          "retrieval_quality": {
-            "max_score": 0.632943733196331,
-            "avg_score": 0.45692282060665007,
-            "source_diversity": 3,
-            "chunk_count": 4,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "What legal settlement amount did a private company pay in 2027?",
-          "answerable": false,
-          "abstained": true,
-          "hit": false,
-          "rr": 0.0,
-          "latency_ms": 38402.72,
-          "retrieval_quality": {
-            "max_score": 0.34383490700329244,
-            "avg_score": 0.34099861970114287,
-            "source_diversity": 4,
-            "chunk_count": 4,
-            "adequate": false,
-            "reason": "Evidence quality below threshold"
-          },
-          "validation_errors": []
-        },
-        {
           "query": "Describe internal salary bands for a non-public enterprise.",
+          "id": "row-0015",
           "answerable": false,
           "abstained": false,
+          "bucket": "unanswerable_out_of_scope",
+          "difficulty": "medium",
           "hit": false,
           "rr": 0.0,
-          "latency_ms": 41339.22,
+          "latency_ms": 36041.17,
           "retrieval_quality": {
             "max_score": 0.634076456970351,
             "avg_score": 0.5270711500026065,
@@ -282,84 +111,19 @@
           "validation_errors": []
         },
         {
-          "query": "How do retrieval and generation interact in a grounded QA system?",
+          "query": "How is vector retrieval typically used in RAG pipelines?",
+          "id": "row-0005",
           "answerable": true,
           "abstained": false,
+          "bucket": "procedure_how_to",
+          "difficulty": "medium",
           "hit": true,
           "rr": 1.0,
-          "latency_ms": 33881.61,
+          "latency_ms": 37381.61,
           "retrieval_quality": {
-            "max_score": 0.6934859305698815,
-            "avg_score": 0.5253074007737538,
+            "max_score": 0.6841673802105805,
+            "avg_score": 0.5207998006259627,
             "source_diversity": 2,
-            "chunk_count": 4,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "What does the docs suggest about iterative query reformulation?",
-          "answerable": true,
-          "abstained": false,
-          "hit": true,
-          "rr": 1.0,
-          "latency_ms": 34325.17,
-          "retrieval_quality": {
-            "max_score": 0.71525275600925,
-            "avg_score": 0.5049645218196288,
-            "source_diversity": 2,
-            "chunk_count": 4,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "How are citation-backed responses typically enforced in agent systems?",
-          "answerable": true,
-          "abstained": false,
-          "hit": true,
-          "rr": 1.0,
-          "latency_ms": 33960.91,
-          "retrieval_quality": {
-            "max_score": 0.5880682389424299,
-            "avg_score": 0.4292056023632783,
-            "source_diversity": 3,
-            "chunk_count": 4,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "What are common failure modes in RAG pipelines?",
-          "answerable": true,
-          "abstained": false,
-          "hit": true,
-          "rr": 1.0,
-          "latency_ms": 34912.89,
-          "retrieval_quality": {
-            "max_score": 0.6324563190872964,
-            "avg_score": 0.4304467203756943,
-            "source_diversity": 2,
-            "chunk_count": 4,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "How can abstention be used when evidence is insufficient?",
-          "answerable": true,
-          "abstained": false,
-          "hit": true,
-          "rr": 0.5,
-          "latency_ms": 34016.81,
-          "retrieval_quality": {
-            "max_score": 0.5493122654010387,
-            "avg_score": 0.398435496377712,
-            "source_diversity": 3,
             "chunk_count": 4,
             "adequate": true,
             "reason": "Adequate evidence"
@@ -370,46 +134,55 @@
     },
     "low_latency": {
       "profile": "low_latency",
-      "dataset_size": 20,
+      "dataset_size": 4,
       "metrics": {
-        "hit_at_k": 0.7,
-        "mrr": 0.65,
-        "citation_precision": 0.8333333333333334,
-        "support_coverage": 0.8235294117647058,
-        "abstain_precision": 0.5,
-        "abstain_recall": 0.2,
-        "latency_p50_ms": 21554.901399998926,
-        "latency_p95_ms": 24369.559499999013
+        "hit_at_k": 0.75,
+        "mrr": 0.625,
+        "citation_precision": 0.8888888888888888,
+        "support_coverage": 1.0,
+        "abstain_precision": 0.0,
+        "abstain_recall": 0.0,
+        "latency_p50_ms": 23481.638099998236,
+        "latency_p95_ms": 23659.794699997292
+      },
+      "per_bucket": {
+        "hit_at_k": {
+          "procedure_how_to": 1.0,
+          "fact_lookup": 1.0,
+          "unanswerable_out_of_scope": 0.0
+        }
+      },
+      "per_difficulty": {
+        "hit_at_k": {
+          "medium": 0.75
+        }
+      },
+      "citation_precision_by_source_type": {
+        "web": 0.8888888888888888
+      },
+      "abstain_subset": {
+        "required_count": 1,
+        "precision": 0.0,
+        "recall": 0.0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 1
       },
       "validation_error_categories": {},
       "rows": [
         {
-          "query": "What does LangChain documentation describe as retrieval augmented generation?",
+          "query": "How can abstention be used when evidence is insufficient?",
+          "id": "row-0020",
           "answerable": true,
           "abstained": false,
-          "hit": true,
-          "rr": 1.0,
-          "latency_ms": 22454.45,
-          "retrieval_quality": {
-            "max_score": 0.641240952346837,
-            "avg_score": 0.4834897911625535,
-            "source_diversity": 2,
-            "chunk_count": 3,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "How does LangGraph help with agent workflow control?",
-          "answerable": true,
-          "abstained": false,
+          "bucket": "procedure_how_to",
+          "difficulty": "medium",
           "hit": true,
           "rr": 0.5,
-          "latency_ms": 21351.25,
+          "latency_ms": 23659.79,
           "retrieval_quality": {
-            "max_score": 0.4221090309869681,
-            "avg_score": 0.4172256125328159,
+            "max_score": 0.5493122654010387,
+            "avg_score": 0.41624373821932376,
             "source_diversity": 3,
             "chunk_count": 3,
             "adequate": true,
@@ -418,63 +191,15 @@
           "validation_errors": []
         },
         {
-          "query": "Which components are involved in prompt templates according to docs?",
-          "answerable": true,
-          "abstained": false,
-          "hit": true,
-          "rr": 1.0,
-          "latency_ms": 22541.58,
-          "retrieval_quality": {
-            "max_score": 0.3925341883101894,
-            "avg_score": 0.38577916965860176,
-            "source_diversity": 2,
-            "chunk_count": 3,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "What are the primary benefits of document chunking for retrieval?",
-          "answerable": true,
-          "abstained": false,
-          "hit": true,
-          "rr": 1.0,
-          "latency_ms": 21528.95,
-          "retrieval_quality": {
-            "max_score": 0.6073015172654733,
-            "avg_score": 0.4607746391940654,
-            "source_diversity": 2,
-            "chunk_count": 3,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "How is vector retrieval typically used in RAG pipelines?",
-          "answerable": true,
-          "abstained": false,
-          "hit": true,
-          "rr": 1.0,
-          "latency_ms": 23049.67,
-          "retrieval_quality": {
-            "max_score": 0.6841673802105805,
-            "avg_score": 0.56727112624099,
-            "source_diversity": 2,
-            "chunk_count": 3,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
           "query": "What role does memory play in agent conversations?",
+          "id": "row-0006",
           "answerable": true,
           "abstained": false,
+          "bucket": "fact_lookup",
+          "difficulty": "medium",
           "hit": true,
           "rr": 1.0,
-          "latency_ms": 23785.33,
+          "latency_ms": 23337.65,
           "retrieval_quality": {
             "max_score": 0.6983778131566711,
             "avg_score": 0.6447551073617633,
@@ -486,148 +211,15 @@
           "validation_errors": []
         },
         {
-          "query": "What is the purpose of tool calling in agent systems?",
-          "answerable": true,
-          "abstained": false,
-          "hit": true,
-          "rr": 1.0,
-          "latency_ms": 23067.62,
-          "retrieval_quality": {
-            "max_score": 0.6737280555467331,
-            "avg_score": 0.5794388475686739,
-            "source_diversity": 2,
-            "chunk_count": 3,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "How does the docs position evaluation for LLM apps?",
-          "answerable": true,
-          "abstained": false,
-          "hit": false,
-          "rr": 0.0,
-          "latency_ms": 21554.9,
-          "retrieval_quality": {
-            "max_score": 0.37297954025998087,
-            "avg_score": 0.3706159679936461,
-            "source_diversity": 2,
-            "chunk_count": 3,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "What can tracing or observability provide in LLM workflows?",
-          "answerable": true,
-          "abstained": false,
-          "hit": true,
-          "rr": 1.0,
-          "latency_ms": 20521.39,
-          "retrieval_quality": {
-            "max_score": 0.37485223010197727,
-            "avg_score": 0.36955259060972107,
-            "source_diversity": 2,
-            "chunk_count": 3,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "Summarize safety or guardrail recommendations for grounded answers.",
-          "answerable": true,
-          "abstained": false,
-          "hit": true,
-          "rr": 1.0,
-          "latency_ms": 20771.46,
-          "retrieval_quality": {
-            "max_score": 0.6586175114180701,
-            "avg_score": 0.46030940726894193,
-            "source_diversity": 2,
-            "chunk_count": 3,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "What exact fuel efficiency target does NASA set for all Mars cargo ships?",
-          "answerable": false,
-          "abstained": false,
-          "hit": false,
-          "rr": 0.0,
-          "latency_ms": 21282.09,
-          "retrieval_quality": {
-            "max_score": 0.36453898919325695,
-            "avg_score": 0.3616060118631383,
-            "source_diversity": 3,
-            "chunk_count": 3,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "What is the proprietary HR policy for Contoso from this dataset?",
-          "answerable": false,
-          "abstained": false,
-          "hit": false,
-          "rr": 0.0,
-          "latency_ms": 20523.85,
-          "retrieval_quality": {
-            "max_score": 0.3914018367233168,
-            "avg_score": 0.3897338985552568,
-            "source_diversity": 2,
-            "chunk_count": 3,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "List all hidden API keys mentioned in these docs.",
-          "answerable": false,
-          "abstained": false,
-          "hit": false,
-          "rr": 0.0,
-          "latency_ms": 22484.04,
-          "retrieval_quality": {
-            "max_score": 0.4030553329494511,
-            "avg_score": 0.39824918307675644,
-            "source_diversity": 2,
-            "chunk_count": 3,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "What legal settlement amount did a private company pay in 2027?",
-          "answerable": false,
-          "abstained": true,
-          "hit": false,
-          "rr": 0.0,
-          "latency_ms": 3825.52,
-          "retrieval_quality": {
-            "max_score": 0.34383490700329244,
-            "avg_score": 0.34240618514169335,
-            "source_diversity": 3,
-            "chunk_count": 3,
-            "adequate": false,
-            "reason": "Evidence quality below threshold"
-          },
-          "validation_errors": []
-        },
-        {
           "query": "Describe internal salary bands for a non-public enterprise.",
+          "id": "row-0015",
           "answerable": false,
           "abstained": false,
+          "bucket": "unanswerable_out_of_scope",
+          "difficulty": "medium",
           "hit": false,
           "rr": 0.0,
-          "latency_ms": 20550.77,
+          "latency_ms": 23481.64,
           "retrieval_quality": {
             "max_score": 0.634076456970351,
             "avg_score": 0.5266917032064931,
@@ -639,84 +231,19 @@
           "validation_errors": []
         },
         {
-          "query": "How do retrieval and generation interact in a grounded QA system?",
-          "answerable": true,
-          "abstained": true,
-          "hit": true,
-          "rr": 1.0,
-          "latency_ms": 3990.33,
-          "retrieval_quality": {
-            "max_score": 0.6934859305698815,
-            "avg_score": 0.4847289794774616,
-            "source_diversity": 1,
-            "chunk_count": 3,
-            "adequate": false,
-            "reason": "Evidence quality below threshold"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "What does the docs suggest about iterative query reformulation?",
+          "query": "How is vector retrieval typically used in RAG pipelines?",
+          "id": "row-0005",
           "answerable": true,
           "abstained": false,
+          "bucket": "procedure_how_to",
+          "difficulty": "medium",
           "hit": true,
           "rr": 1.0,
-          "latency_ms": 19346.41,
+          "latency_ms": 23346.66,
           "retrieval_quality": {
-            "max_score": 0.71525275600925,
-            "avg_score": 0.5532691114672373,
+            "max_score": 0.6841673802105805,
+            "avg_score": 0.56727112624099,
             "source_diversity": 2,
-            "chunk_count": 3,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "How are citation-backed responses typically enforced in agent systems?",
-          "answerable": true,
-          "abstained": false,
-          "hit": true,
-          "rr": 1.0,
-          "latency_ms": 24878.02,
-          "retrieval_quality": {
-            "max_score": 0.5880682389424299,
-            "avg_score": 0.4481653493944122,
-            "source_diversity": 2,
-            "chunk_count": 3,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "What are common failure modes in RAG pipelines?",
-          "answerable": true,
-          "abstained": false,
-          "hit": true,
-          "rr": 1.0,
-          "latency_ms": 24369.56,
-          "retrieval_quality": {
-            "max_score": 0.6324563190872964,
-            "avg_score": 0.45533927160033966,
-            "source_diversity": 2,
-            "chunk_count": 3,
-            "adequate": true,
-            "reason": "Adequate evidence"
-          },
-          "validation_errors": []
-        },
-        {
-          "query": "How can abstention be used when evidence is insufficient?",
-          "answerable": true,
-          "abstained": false,
-          "hit": true,
-          "rr": 0.5,
-          "latency_ms": 24083.11,
-          "retrieval_quality": {
-            "max_score": 0.5493122654010387,
-            "avg_score": 0.41624373821932376,
-            "source_diversity": 3,
             "chunk_count": 3,
             "adequate": true,
             "reason": "Adequate evidence"

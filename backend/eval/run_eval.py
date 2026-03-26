@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import platform
 import time
+from collections import defaultdict
 from typing import Any
 import sys
 
@@ -23,17 +24,63 @@ JSON_REPORT_PATH = Path(__file__).parent / "eval_report.json"
 MD_REPORT_PATH = Path(__file__).parent / "eval_report.md"
 
 
-def _load_dataset(limit: int = 0) -> list[dict[str, Any]]:
+def _load_dataset(dataset_path: Path, limit: int = 0) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    with DATASET_PATH.open("r", encoding="utf-8") as f:
+    with dataset_path.open("r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
                 continue
-            rows.append(json.loads(line))
+            rows.append(_normalize_row(json.loads(line), len(rows)))
     if limit > 0:
         return rows[:limit]
     return rows
+
+
+def _normalize_row(row: dict[str, Any], index: int) -> dict[str, Any]:
+    query = str(row.get("query", "")).strip()
+    should_abstain = bool(row.get("should_abstain", False))
+    if "answerable" in row:
+        answerable = bool(row.get("answerable", True))
+        should_abstain = not answerable if not should_abstain else should_abstain
+    else:
+        answerable = not should_abstain
+
+    must_cite = row.get("must_cite_sources", row.get("expected_sources", []))
+    must_cite_sources = [str(s).lower() for s in must_cite if isinstance(s, str)]
+
+    tags = row.get("tags", [])
+    tags_clean = [str(t).lower() for t in tags if isinstance(t, str)]
+    bucket = str(row.get("bucket", "")).strip().lower()
+    if not bucket:
+        if should_abstain:
+            bucket = "unanswerable_out_of_scope"
+        elif any("compare" in query.lower() for _ in [0]):
+            bucket = "comparison_questions"
+        elif any(word in query.lower() for word in ["how", "steps", "procedure"]):
+            bucket = "procedure_how_to"
+        else:
+            bucket = "fact_lookup"
+
+    difficulty = str(row.get("difficulty", "medium")).strip().lower()
+    if difficulty not in {"easy", "medium", "hard"}:
+        difficulty = "medium"
+
+    requires_multi_hop = bool(row.get("requires_multi_hop", bucket in {"multi_hop_synthesis", "comparison_questions"}))
+
+    return {
+        "id": str(row.get("id", f"sample-{index+1:04d}")),
+        "query": query,
+        "expected_answer": str(row.get("expected_answer", "")),
+        "must_cite_sources": must_cite_sources,
+        "difficulty": difficulty,
+        "requires_multi_hop": requires_multi_hop,
+        "should_abstain": should_abstain,
+        "reason_if_abstain": str(row.get("reason_if_abstain", "")),
+        "tags": tags_clean,
+        "bucket": bucket,
+        "answerable": answerable,
+    }
 
 
 def _source_hit(expected: list[str], retrieved_sources: list[str]) -> tuple[bool, float]:
@@ -73,6 +120,9 @@ def _run_profile_eval(
         abstain_tp = 0
         abstain_fp = 0
         abstain_fn = 0
+        bucket_counts: dict[str, dict[str, int]] = defaultdict(lambda: {"total": 0, "hits": 0})
+        difficulty_counts: dict[str, dict[str, int]] = defaultdict(lambda: {"total": 0, "hits": 0})
+        citation_type_counts: dict[str, dict[str, int]] = defaultdict(lambda: {"tp": 0, "fp": 0})
         latencies_ms: list[float] = []
         validation_error_categories: dict[str, int] = {}
 
@@ -94,19 +144,22 @@ def _run_profile_eval(
             abstained = bool(result.get("abstained", False))
 
             retrieved_sources = [str(chunk.get("source", "")) for chunk in retrieved]
-            hit, rr = _source_hit(item.get("expected_sources", []), retrieved_sources)
+            expected_sources = [s.lower() for s in item.get("must_cite_sources", [])]
+            hit, rr = _source_hit(expected_sources, retrieved_sources)
 
             if hit:
                 hit_count += 1
             reciprocal_rank_sum += rr
 
-            expected_sources = [s.lower() for s in item.get("expected_sources", [])]
             for citation in citations:
                 source = str(citation.get("source", "")).lower()
+                source_type = str(citation.get("source_type", "unknown") or "unknown").lower()
                 if expected_sources and any(exp in source for exp in expected_sources):
                     citation_tp += 1
+                    citation_type_counts[source_type]["tp"] += 1
                 elif expected_sources:
                     citation_fp += 1
+                    citation_type_counts[source_type]["fp"] += 1
 
             if expected_sources:
                 support_total += len(expected_sources)
@@ -114,13 +167,21 @@ def _run_profile_eval(
                     if any(exp in src.lower() for src in retrieved_sources):
                         support_covered += 1
 
-            answerable = bool(item.get("answerable", True))
+            answerable = not bool(item.get("should_abstain", False))
             if not answerable and abstained:
                 abstain_tp += 1
             if answerable and abstained:
                 abstain_fp += 1
             if (not answerable) and (not abstained):
                 abstain_fn += 1
+
+            bucket = str(item.get("bucket", "unknown"))
+            difficulty = str(item.get("difficulty", "unknown"))
+            bucket_counts[bucket]["total"] += 1
+            difficulty_counts[difficulty]["total"] += 1
+            if hit:
+                bucket_counts[bucket]["hits"] += 1
+                difficulty_counts[difficulty]["hits"] += 1
 
             for err in result.get("validation_errors", []):
                 category = str(err).split(":", 1)[0].strip().lower()
@@ -130,8 +191,11 @@ def _run_profile_eval(
             rows.append(
                 {
                     "query": item["query"],
+                    "id": item["id"],
                     "answerable": answerable,
                     "abstained": abstained,
+                    "bucket": bucket,
+                    "difficulty": difficulty,
                     "hit": hit,
                     "rr": rr,
                     "latency_ms": round(elapsed_ms, 2),
@@ -151,6 +215,31 @@ def _run_profile_eval(
         p50_ms = _percentile(latencies_ms, 50)
         p95_ms = _percentile(latencies_ms, 95)
 
+        per_bucket_hit_at_k: dict[str, float] = {}
+        for bucket, values in bucket_counts.items():
+            total_bucket = values["total"]
+            per_bucket_hit_at_k[bucket] = (values["hits"] / total_bucket) if total_bucket else 0.0
+
+        per_difficulty_hit_at_k: dict[str, float] = {}
+        for difficulty, values in difficulty_counts.items():
+            total_difficulty = values["total"]
+            per_difficulty_hit_at_k[difficulty] = (values["hits"] / total_difficulty) if total_difficulty else 0.0
+
+        citation_precision_by_source_type: dict[str, float] = {}
+        for source_type, values in citation_type_counts.items():
+            denom = values["tp"] + values["fp"]
+            citation_precision_by_source_type[source_type] = (values["tp"] / denom) if denom else 0.0
+
+        abstain_total = sum(1 for item in dataset if bool(item.get("should_abstain", False)))
+        abstain_subset = {
+            "required_count": abstain_total,
+            "precision": abstain_precision,
+            "recall": abstain_recall,
+            "tp": abstain_tp,
+            "fp": abstain_fp,
+            "fn": abstain_fn,
+        }
+
         return {
             "profile": profile,
             "dataset_size": total,
@@ -164,6 +253,14 @@ def _run_profile_eval(
                 "latency_p50_ms": p50_ms,
                 "latency_p95_ms": p95_ms,
             },
+            "per_bucket": {
+                "hit_at_k": per_bucket_hit_at_k,
+            },
+            "per_difficulty": {
+                "hit_at_k": per_difficulty_hit_at_k,
+            },
+            "citation_precision_by_source_type": citation_precision_by_source_type,
+            "abstain_subset": abstain_subset,
             "validation_error_categories": validation_error_categories,
             "rows": rows,
         }
@@ -171,8 +268,14 @@ def _run_profile_eval(
         settings.runtime_profile = prev_profile
 
 
-def run_eval(limit: int = 0, profiles: list[str] | None = None, show_progress: bool = True) -> dict[str, Any]:
-    dataset = _load_dataset(limit=limit)
+def run_eval(
+    limit: int = 0,
+    profiles: list[str] | None = None,
+    show_progress: bool = True,
+    dataset_path: str | None = None,
+) -> dict[str, Any]:
+    selected_dataset = Path(dataset_path) if dataset_path else DATASET_PATH
+    dataset = _load_dataset(selected_dataset, limit=limit)
     selected_profiles = profiles or ["balanced", "low_latency"]
 
     profile_results: dict[str, Any] = {}
@@ -184,6 +287,7 @@ def run_eval(limit: int = 0, profiles: list[str] | None = None, show_progress: b
         "runtime": {
             "python": platform.python_version(),
             "platform": platform.platform(),
+            "dataset_path": str(selected_dataset),
             "runtime_profile_compared": selected_profiles,
             "chat_model": settings.ollama_chat_model,
             "embedding_model": settings.ollama_embedding_model,
@@ -203,6 +307,7 @@ def run_eval(limit: int = 0, profiles: list[str] | None = None, show_progress: b
         "# Eval Report",
         "",
         f"Dataset size: {len(dataset)}",
+        f"Dataset path: {selected_dataset}",
         "",
         "## Hardware + Runtime Profile",
         "",
@@ -223,7 +328,38 @@ def run_eval(limit: int = 0, profiles: list[str] | None = None, show_progress: b
         f"| Abstain recall | {p['abstain_recall']:.3f} | {s['abstain_recall']:.3f} |",
         f"| Latency P50 (ms) | {p['latency_p50_ms']:.1f} | {s['latency_p50_ms']:.1f} |",
         f"| Latency P95 (ms) | {p['latency_p95_ms']:.1f} | {s['latency_p95_ms']:.1f} |",
+        "",
+        "## Per-Bucket Hit@k",
     ]
+
+    bucket_keys = sorted(
+        set(report["profiles"][primary_profile].get("per_bucket", {}).get("hit_at_k", {}).keys())
+        | set(report["profiles"][secondary_profile].get("per_bucket", {}).get("hit_at_k", {}).keys())
+    )
+    if bucket_keys:
+        md.extend([
+            "",
+            f"| Bucket | {primary_profile} | {secondary_profile} |",
+            "|---|---:|---:|",
+        ])
+        for key in bucket_keys:
+            p_val = report["profiles"][primary_profile].get("per_bucket", {}).get("hit_at_k", {}).get(key, 0.0)
+            s_val = report["profiles"][secondary_profile].get("per_bucket", {}).get("hit_at_k", {}).get(key, 0.0)
+            md.append(f"| {key} | {p_val:.3f} | {s_val:.3f} |")
+
+    md.extend([
+        "",
+        "## Abstain Subset",
+        "",
+        f"- {primary_profile}: {report['profiles'][primary_profile].get('abstain_subset', {})}",
+        f"- {secondary_profile}: {report['profiles'][secondary_profile].get('abstain_subset', {})}",
+        "",
+        "## Citation Precision by Source Type",
+        "",
+        f"- {primary_profile}: {report['profiles'][primary_profile].get('citation_precision_by_source_type', {})}",
+        f"- {secondary_profile}: {report['profiles'][secondary_profile].get('citation_precision_by_source_type', {})}",
+    ])
+
     with MD_REPORT_PATH.open("w", encoding="utf-8") as f:
         f.write("\n".join(md))
 
@@ -249,6 +385,16 @@ if __name__ == "__main__":
         action="store_true",
         help="Disable per-query progress logs",
     )
+    parser.add_argument(
+        "--dataset",
+        default=str(DATASET_PATH),
+        help="Path to dataset JSONL (supports strengthened schema)",
+    )
     args = parser.parse_args()
-    result = run_eval(limit=args.limit, profiles=args.profiles, show_progress=not args.no_progress)
+    result = run_eval(
+        limit=args.limit,
+        profiles=args.profiles,
+        show_progress=not args.no_progress,
+        dataset_path=args.dataset,
+    )
     print(json.dumps(result["profiles"], indent=2))

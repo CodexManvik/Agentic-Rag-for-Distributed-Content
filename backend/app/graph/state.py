@@ -26,6 +26,8 @@ class TraceEvent(TypedDict):
     node: str
     status: str
     detail: str
+    ts: NotRequired[str]
+    duration_ms: NotRequired[float]
 
 
 class RetrievalQuality(TypedDict):
@@ -60,3 +62,4 @@ class NavigatorState(TypedDict):
     cited_indices: list[int]
     synthesis_output: SynthesisOutput
     trace: list[TraceEvent]
+    stage_timings: dict[str, float]

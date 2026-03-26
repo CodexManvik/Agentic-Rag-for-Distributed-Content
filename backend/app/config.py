@@ -17,9 +17,13 @@ class Settings(BaseSettings):
     bm25_cache_enabled: bool = True
     bm25_weight: float = 0.3
     vector_weight: float = 0.7
-    retrieval_min_score: float = 0.35
+    retrieval_min_score: float = 0.40
     retrieval_min_chunks: int = 3
     retrieval_min_source_diversity: int = 2
+    retrieval_hard_query_min_score_boost: float = 0.08
+    retrieval_hard_query_min_source_diversity: int = 3
+    retrieval_query_overlap_min: float = 0.15
+    retrieval_entity_overlap_min: float = 0.10
     rerank_enabled: bool = True
     debug_trace_enabled: bool = False
     max_retrieval_retries: int = 1
@@ -28,7 +32,7 @@ class Settings(BaseSettings):
     chunk_size: int = 1200
     chunk_overlap: int = 200
 
-    runtime_profile: str = "balanced"
+    runtime_profile: str = "low_latency"
     model_temperature: float = 0.0
     model_top_p: float = 0.9
     model_top_k: int = 20
@@ -42,7 +46,9 @@ class Settings(BaseSettings):
 
     allowed_source_domains: str = (
         "support.atlassian.com,confluence.atlassian.com,docs.langchain.com,"
-        "python.langchain.com,langchain.com,atlassian.com,www.atlassian.com,www.langchain.com"
+        "python.langchain.com,langchain.com,atlassian.com,www.atlassian.com,www.langchain.com,"
+        "arxiv.org,cdn.openai.com,openai.com,www.openai.com,anthropic.com,www.anthropic.com,"
+        "ai.google.dev,developers.google.com,research.google,paperswithcode.com,langchain-ai.github.io,github.io"
     )
     public_sources_only: bool = True
 

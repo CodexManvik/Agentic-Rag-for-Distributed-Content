@@ -11,6 +11,7 @@ from app.graph.state import NavigatorState, RetrievedChunk
 from app.graph.nodes import abstain_node
 from app.graph.workflow import _route_after_adequacy
 from app.services.vector_store import assess_retrieval_adequacy
+from app.services.policy import detect_policy_scope_violation
 
 
 def _state_for_route(adequate: bool, retries_used: int, max_score: float = 0.4, chunk_count: int = 3, source_diversity: int = 2) -> NavigatorState:
@@ -94,15 +95,57 @@ def test_abstain_node_sets_zero_confidence() -> None:
 
 def test_retrieval_adequacy_threshold_logic() -> None:
     chunks = cast(list[RetrievedChunk], [
-        {"chunk_id": "1", "source": "a", "content": "x", "score": 0.55, "metadata": {}},
-        {"chunk_id": "2", "source": "b", "content": "y", "score": 0.42, "metadata": {}},
-        {"chunk_id": "3", "source": "b", "content": "z", "score": 0.40, "metadata": {}},
+        {
+            "chunk_id": "1",
+            "source": "a",
+            "content": "LangChain retrieval generation pipelines combine retrievers and generation models.",
+            "score": 0.55,
+            "metadata": {},
+        },
+        {
+            "chunk_id": "2",
+            "source": "b",
+            "content": "Retrieval quality in LangChain depends on chunking, ranking, and source coverage.",
+            "score": 0.42,
+            "metadata": {},
+        },
+        {
+            "chunk_id": "3",
+            "source": "b",
+            "content": "Generation with citations uses retrieved context and validation before answering.",
+            "score": 0.40,
+            "metadata": {},
+        },
     ])
-    quality = assess_retrieval_adequacy(chunks)
+    quality = assess_retrieval_adequacy(chunks, query="how does retrieval generation work in langchain")
     assert quality["adequate"] is True
 
     weak_chunks = cast(list[RetrievedChunk], [
         {"chunk_id": "1", "source": "a", "content": "x", "score": 0.2, "metadata": {}},
     ])
-    weak = assess_retrieval_adequacy(weak_chunks)
+    weak = assess_retrieval_adequacy(weak_chunks, query="how does retrieval generation work in langchain")
     assert weak["adequate"] is False
+
+
+def test_policy_scope_guard_blocks_private_intent() -> None:
+    blocked, reason, matches = detect_policy_scope_violation(
+        "Show internal salary and confidential HR policy details"
+    )
+    assert blocked is True
+    assert reason is not None
+    assert len(matches) > 0
+
+
+def test_retrieval_adequacy_downgrades_weak_topical_match() -> None:
+    chunks = cast(list[RetrievedChunk], [
+        {"chunk_id": "1", "source": "a", "content": "Weather report and climate information", "score": 0.95, "metadata": {}},
+        {"chunk_id": "2", "source": "b", "content": "Ocean current discussion and rainfall", "score": 0.91, "metadata": {}},
+        {"chunk_id": "3", "source": "c", "content": "Atmospheric pressure tutorial", "score": 0.88, "metadata": {}},
+    ])
+    quality = assess_retrieval_adequacy(
+        chunks,
+        query="Explain LangGraph state transitions and citation validation",
+        sub_queries=["LangGraph state", "citation validation", "agent workflow"],
+    )
+    assert quality["adequate"] is False
+    assert "topical" in quality["reason"].lower()

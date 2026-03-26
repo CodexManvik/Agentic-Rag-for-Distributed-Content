@@ -19,6 +19,8 @@ class TraceEvent(BaseModel):
     node: str
     status: str
     detail: str
+    ts: str | None = None
+    duration_ms: float | None = None
 
 
 class RetrievalQuality(BaseModel):
@@ -39,3 +41,4 @@ class ChatResponse(BaseModel):
     abstain_reason: str | None = None
     trace: list[TraceEvent]
     retrieval_quality: RetrievalQuality
+    stage_timings: dict[str, float] = Field(default_factory=dict)

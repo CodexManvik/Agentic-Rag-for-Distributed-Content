@@ -1,0 +1,18 @@
+{
+  "target_total": 120,
+  "buckets": {
+    "fact_lookup": 20,
+    "multi_hop_synthesis": 25,
+    "comparison_questions": 20,
+    "procedure_how_to": 15,
+    "edge_ambiguity": 10,
+    "unanswerable_out_of_scope": 20,
+    "adversarial_noisy": 10
+  },
+  "abstain_required_min_ratio": 0.15,
+  "notes": [
+    "Keep at least 15-20% should_abstain=true rows.",
+    "Use manual validation for expected_answer and must_cite_sources.",
+    "Maintain source diversity across confluence/web/pdf content."
+  ]
+}
