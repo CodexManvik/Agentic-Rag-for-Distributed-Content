@@ -1,0 +1,33 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: skn-backend
+    ports:
+      - "8000:8000"
+    environment:
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-02-15-preview}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT}
+      CHROMA_COLLECTION_NAME: ${CHROMA_COLLECTION_NAME:-knowledge_base}
+      CHROMA_PERSIST_DIRECTORY: /data/chroma
+      RETRIEVAL_TOP_K: ${RETRIEVAL_TOP_K:-4}
+    volumes:
+      - chroma_data:/data/chroma
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: skn-frontend
+    depends_on:
+      - backend
+    ports:
+      - "8501:8501"
+    environment:
+      BACKEND_URL: http://backend:8000/chat
+
+volumes:
+  chroma_data:
