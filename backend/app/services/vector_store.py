@@ -4,10 +4,15 @@ import chromadb
 
 from app.config import settings
 from app.graph.state import RetrievedChunk
+from app.services.llm import get_chroma_embedding_function
 
 
 _client = chromadb.PersistentClient(path=settings.chroma_persist_directory)
-_collection = _client.get_or_create_collection(name=settings.chroma_collection_name)
+_embedding_function = get_chroma_embedding_function()
+_collection = _client.get_or_create_collection(
+    name=settings.chroma_collection_name,
+    embedding_function=_embedding_function,
+)
 
 
 def query_chunks(queries: Iterable[str], top_k: int | None = None) -> list[RetrievedChunk]:
