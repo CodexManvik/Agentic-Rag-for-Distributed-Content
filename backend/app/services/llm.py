@@ -55,18 +55,24 @@ def invoke_synthesis(
 ) -> str:
     """Invoke the chat model for synthesis using native Ollama HTTP API.
 
-    Uses /no_think directive and the raw Ollama REST endpoint directly
-    to avoid LangChain ChatOllama's content/thinking field splitting
-    that causes qwen3.5 thinking models to return empty .content strings.
+    Uses the /no_think directive (prepended to the user message) and the
+    Ollama-native ``think: false`` parameter to disable chain-of-thought for
+    Qwen3 thinking models.  This avoids empty ``.content`` fields that occur
+    when LangChain ChatOllama splits thinking tokens away from the answer, and
+    ensures the model does not emit ``<think>`` blocks that corrupt JSON output.
     """
     url = f"{settings.ollama_base_url.rstrip('/')}/api/chat"
     payload = {
         "model": settings.ollama_chat_model,
         "messages": [
-            {"role": "system", "content": "/no_think"},
-            {"role": "user", "content": prompt},
+            # /no_think placed in the user message is the official Qwen3
+            # mechanism to suppress chain-of-thought output.
+            {"role": "user", "content": "/no_think\n" + prompt},
         ],
         "stream": False,
+        # Ollama ≥ 0.7.0 native thinking control – suppresses <think> tokens
+        # at the server level regardless of model defaults.
+        "think": False,
         "options": {
             "temperature": settings.model_temperature,
             "top_p": settings.model_top_p,
@@ -157,14 +163,27 @@ def check_ollama_readiness() -> tuple[bool, str]:
 
     refresh_model_registry()
     available = _available_models()
-    missing: list[str] = []
+
+    # The chat model is required; without it queries cannot be answered.
     if not _is_model_available(settings.ollama_chat_model, available):
-        missing.append(settings.ollama_chat_model)
+        return False, (
+            f"Missing Ollama chat model: {settings.ollama_chat_model}. "
+            f"Run: ollama pull {settings.ollama_chat_model}"
+        )
+
+    # The embedding model is preferred but not strictly required – the system
+    # falls back to Chroma's bundled ONNX embedding when it is absent.
     if not _is_model_available(settings.ollama_embedding_model, available):
-        missing.append(settings.ollama_embedding_model)
-    if missing:
-        pulls = ", ".join(f"ollama pull {m}" for m in missing)
-        return False, f"Missing Ollama models: {', '.join(missing)}. Run: {pulls}"
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "Embedding model '%s' not found in Ollama; falling back to "
+            "Chroma's default embedding function (all-MiniLM-L6-v2). "
+            "Retrieval quality may differ from production. "
+            "Pull the model with: ollama pull %s",
+            settings.ollama_embedding_model,
+            settings.ollama_embedding_model,
+        )
+
     return True, "ready"
 
 

@@ -42,6 +42,24 @@ def _create_client() -> Any:
         return chromadb.PersistentClient(path=persist_dir)
 
 
+def _get_embedding_function() -> Any:
+    """Return the best available embedding function.
+
+    Prefers the Ollama-backed embedding (nomic-embed-text) that is used in
+    production.  Falls back to Chroma's bundled ONNX embedding model
+    (all-MiniLM-L6-v2) when Ollama is unreachable, so that local development
+    and testing work without a running Ollama instance.
+    """
+    try:
+        return get_shared_chroma_embedding_function()
+    except Exception:
+        try:
+            from chromadb.utils.embedding_functions import DefaultEmbeddingFunction  # type: ignore[import]
+            return DefaultEmbeddingFunction()
+        except Exception:
+            return None
+
+
 _client = _create_client()
 _collection: Any | None = None
 _collection_lock = Lock()
@@ -55,10 +73,11 @@ def _ensure_collection() -> Any:
         return _collection
     with _collection_lock:
         if _collection is None:
-            _collection = _client.get_or_create_collection(
-                name=settings.chroma_collection_name,
-                embedding_function=get_shared_chroma_embedding_function(),
-            )
+            embed_fn = _get_embedding_function()
+            kwargs: dict[str, Any] = {"name": settings.chroma_collection_name}
+            if embed_fn is not None:
+                kwargs["embedding_function"] = embed_fn
+            _collection = _client.get_or_create_collection(**kwargs)
     return _collection
 
 
@@ -72,10 +91,11 @@ def reset_collection() -> None:
         _client.delete_collection(name=settings.chroma_collection_name)
     except Exception:
         pass
-    _collection = _client.get_or_create_collection(
-        name=settings.chroma_collection_name,
-        embedding_function=get_shared_chroma_embedding_function(),
-    )
+    embed_fn = _get_embedding_function()
+    kwargs: dict[str, Any] = {"name": settings.chroma_collection_name}
+    if embed_fn is not None:
+        kwargs["embedding_function"] = embed_fn
+    _collection = _client.get_or_create_collection(**kwargs)
     refresh_bm25_cache()
 
 

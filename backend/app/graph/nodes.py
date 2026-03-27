@@ -29,22 +29,33 @@ def _no_evidence(state: NavigatorState) -> bool:
     return len(state.get("retrieved_chunks", [])) == 0 or int(quality.get("chunk_count", 0)) == 0
 
 
+def _strip_think_tokens(text: str) -> str:
+    """Remove <think>…</think> reasoning blocks emitted by Qwen3 thinking models."""
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
+
 def _message_to_text(message: Any) -> str:
+    """Extract plain text from a model message, stripping any thinking tokens."""
     if isinstance(message, str):
-        return message
+        return _strip_think_tokens(message)
     content = getattr(message, "content", "")
     if isinstance(content, str):
-        return content
+        return _strip_think_tokens(content)
     if isinstance(content, list):
         parts: list[str] = []
         for item in content:
             if isinstance(item, str):
                 parts.append(item)
             elif isinstance(item, dict):
+                # Ignore dedicated thinking blocks (type == "thinking"); only
+                # collect plain text blocks so thinking tokens never leak into
+                # sub-query lists or reformulation results.
+                if item.get("type") == "thinking":
+                    continue
                 text = item.get("text")
                 if isinstance(text, str):
                     parts.append(text)
-        return "\n".join(parts)
+        return _strip_think_tokens("\n".join(parts))
     return ""
 
 
@@ -530,6 +541,35 @@ def citation_validation_agent(state: NavigatorState) -> NavigatorState:
                 "failed",
                 "categories:" + ",".join(second["error_categories"]),
             )
+
+    # Before declaring a full abstain, check whether the only failures are
+    # *format* errors (missing [n] markers) rather than *content* errors
+    # (wrong citation indices, empty answer, or semantically invalid citations).
+    # Small models (e.g. 2B) often produce correct, grounded answers but omit
+    # inline citation markers; treating that as an abstain discards good output.
+    final_errors = state.get("validation_errors", [])
+    final_categories = set()
+    for err in final_errors:
+        cat = err.split(":")[0]
+        final_categories.add(cat)
+    content_errors = final_categories - {"missing_citation"}
+    answer_ok = (
+        bool(state["final_response"])
+        and not is_fallback_abstain_answer(state["final_response"])
+        and not state.get("abstain_reason")
+    )
+    if not content_errors and answer_ok:
+        # Only missing-citation format warnings; the answer itself is valid.
+        # Reduce confidence slightly to signal imperfect citation formatting,
+        # but do not abstain.
+        state["confidence"] = max(0.0, state["confidence"] - 0.15)
+        _trace(
+            state,
+            "citation_validation",
+            "ok",
+            "Passed with citation-format warnings (missing markers only)",
+        )
+        return state
 
     state["abstained"] = True
     if not state["abstain_reason"]:

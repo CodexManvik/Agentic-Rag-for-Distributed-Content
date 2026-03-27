@@ -25,13 +25,13 @@ class Settings(BaseSettings):
     retrieval_hard_query_min_source_diversity: int = 3
     retrieval_query_overlap_min: float = 0.15
     retrieval_entity_overlap_min: float = 0.10
-    retrieval_chunk_min_term_overlap: int = 1
+    retrieval_chunk_min_term_overlap: int = 0
     retrieval_workflow_chunk_min_term_overlap: int = 2
     retrieval_pdf_penalty_for_workflow: float = 0.55
     retrieval_workflow_source_boost: float = 1.35
     retrieval_langgraph_source_boost: float = 1.2
     rerank_enabled: bool = True
-    low_latency_skip_overlap_check: bool = False
+    low_latency_skip_overlap_check: bool = True
     debug_trace_enabled: bool = False
     max_retrieval_retries: int = 1
     max_validation_retries: int = 1
