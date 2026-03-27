@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import platform
 import time
-from collections import defaultdict
+from collections import defaultdict, Counter
 from typing import Any
 import sys
 
@@ -51,11 +51,12 @@ def _normalize_row(row: dict[str, Any], index: int) -> dict[str, Any]:
 
     tags = row.get("tags", [])
     tags_clean = [str(t).lower() for t in tags if isinstance(t, str)]
+
     bucket = str(row.get("bucket", "")).strip().lower()
     if not bucket:
         if should_abstain:
             bucket = "unanswerable_out_of_scope"
-        elif any("compare" in query.lower() for _ in [0]):
+        elif "compare" in query.lower() or "difference" in query.lower() or "versus" in query.lower():
             bucket = "comparison_questions"
         elif any(word in query.lower() for word in ["how", "steps", "procedure"]):
             bucket = "procedure_how_to"
@@ -67,6 +68,7 @@ def _normalize_row(row: dict[str, Any], index: int) -> dict[str, Any]:
         difficulty = "medium"
 
     requires_multi_hop = bool(row.get("requires_multi_hop", bucket in {"multi_hop_synthesis", "comparison_questions"}))
+    manual_review_required = bool(row.get("manual_review_required", False))
 
     return {
         "id": str(row.get("id", f"sample-{index+1:04d}")),
@@ -80,6 +82,7 @@ def _normalize_row(row: dict[str, Any], index: int) -> dict[str, Any]:
         "tags": tags_clean,
         "bucket": bucket,
         "answerable": answerable,
+        "manual_review_required": manual_review_required,
     }
 
 
@@ -102,6 +105,16 @@ def _percentile(values: list[float], pct: float) -> float:
     return ordered[index]
 
 
+def _safe_precision(tp: int, fp: int) -> float:
+    denom = tp + fp
+    return (tp / denom) if denom else 0.0
+
+
+def _safe_recall(tp: int, fn: int) -> float:
+    denom = tp + fn
+    return (tp / denom) if denom else 0.0
+
+
 def _run_profile_eval(
     dataset: list[dict[str, Any]],
     profile: str,
@@ -111,39 +124,57 @@ def _run_profile_eval(
     settings.runtime_profile = profile
     try:
         total = len(dataset)
+
         hit_count = 0
         reciprocal_rank_sum = 0.0
+
+        # citation precision (strict scoring subset only)
         citation_tp = 0
         citation_fp = 0
+
         support_covered = 0
         support_total = 0
+
         abstain_tp = 0
         abstain_fp = 0
         abstain_fn = 0
+
         bucket_counts: dict[str, dict[str, int]] = defaultdict(lambda: {"total": 0, "hits": 0, "eligible": 0})
         difficulty_counts: dict[str, dict[str, int]] = defaultdict(lambda: {"total": 0, "hits": 0})
         citation_type_counts: dict[str, dict[str, int]] = defaultdict(lambda: {"tp": 0, "fp": 0})
+
         latencies_ms: list[float] = []
         validation_error_categories: dict[str, int] = {}
         adversarial_total = 0
         adversarial_correct_abstain = 0
 
-        rows: list[dict[str, Any]] = []
+        # diagnostics
+        false_abstain_reasons = Counter()
+        abstain_by_bucket: dict[str, dict[str, int]] = defaultdict(lambda: {"tp": 0, "fp": 0, "fn": 0, "total": 0})
+        scored_for_citation_count = 0
+        skipped_citation_scoring_count = 0
+        manual_review_row_count = 0
 
+        rows: list[dict[str, Any]] = []
         total_items = len(dataset)
+
         for idx, item in enumerate(dataset, start=1):
             start = time.perf_counter()
             result = run_workflow(item["query"])
             elapsed_ms = (time.perf_counter() - start) * 1000
             latencies_ms.append(elapsed_ms)
+
+            abstained = bool(result.get("abstained", False))
             if show_progress:
-                print(
-                    f"[{profile}] {idx}/{total_items} "
-                    f"{elapsed_ms:.1f}ms | abstained={bool(result.get('abstained', False))}"
-                )
+                print(f"[{profile}] {idx}/{total_items} {elapsed_ms:.1f}ms | abstained={abstained}")
+
             retrieved = result.get("retrieved_chunks", [])
             citations = result.get("citations", [])
-            abstained = bool(result.get("abstained", False))
+            answer = str(result.get("final_response", ""))
+            answer_len = len(answer.strip())
+            confidence = float(result.get("confidence", 0.0))
+            abstain_reason = str(result.get("abstain_reason", "") or "")
+            used_deterministic_fallback = bool(result.get("used_deterministic_fallback", False))
 
             retrieved_sources = [str(chunk.get("source", "")) for chunk in retrieved]
             expected_sources = [s.lower() for s in item.get("must_cite_sources", [])]
@@ -153,15 +184,32 @@ def _run_profile_eval(
                 hit_count += 1
             reciprocal_rank_sum += rr
 
-            for citation in citations:
-                source = str(citation.get("source", "")).lower()
-                source_type = str(citation.get("source_type", "unknown") or "unknown").lower()
-                if expected_sources and any(exp in source for exp in expected_sources):
-                    citation_tp += 1
-                    citation_type_counts[source_type]["tp"] += 1
-                elif expected_sources:
-                    citation_fp += 1
-                    citation_type_counts[source_type]["fp"] += 1
+            # citation scoring guard: only on non-abstained, meaningful answers, with expected sources
+            # and exclude manual-review rows from citation precision denominator.
+            is_manual_review = bool(item.get("manual_review_required", False))
+            if is_manual_review:
+                manual_review_row_count += 1
+
+            score_citations = (
+                (not abstained)
+                and answer_len >= 40
+                and bool(expected_sources)
+                and (not is_manual_review)
+            )
+
+            if score_citations:
+                scored_for_citation_count += 1
+                for citation in citations:
+                    source = str(citation.get("source", "")).lower()
+                    source_type = str(citation.get("source_type", "unknown") or "unknown").lower()
+                    if any(exp in source for exp in expected_sources):
+                        citation_tp += 1
+                        citation_type_counts[source_type]["tp"] += 1
+                    else:
+                        citation_fp += 1
+                        citation_type_counts[source_type]["fp"] += 1
+            else:
+                skipped_citation_scoring_count += 1
 
             if expected_sources:
                 support_total += len(expected_sources)
@@ -170,22 +218,36 @@ def _run_profile_eval(
                         support_covered += 1
 
             answerable = not bool(item.get("should_abstain", False))
-            if not answerable and abstained:
+            bucket = str(item.get("bucket", "unknown"))
+            difficulty = str(item.get("difficulty", "unknown"))
+
+            # global abstain metrics
+            if (not answerable) and abstained:
                 abstain_tp += 1
             if answerable and abstained:
                 abstain_fp += 1
+                false_abstain_reasons[abstain_reason or "no_reason"] += 1
             if (not answerable) and (not abstained):
                 abstain_fn += 1
 
-            bucket = str(item.get("bucket", "unknown"))
-            difficulty = str(item.get("difficulty", "unknown"))
+            # per-bucket abstain metrics
+            abstain_by_bucket[bucket]["total"] += 1
+            if (not answerable) and abstained:
+                abstain_by_bucket[bucket]["tp"] += 1
+            if answerable and abstained:
+                abstain_by_bucket[bucket]["fp"] += 1
+            if (not answerable) and (not abstained):
+                abstain_by_bucket[bucket]["fn"] += 1
+
             bucket_counts[bucket]["total"] += 1
             difficulty_counts[difficulty]["total"] += 1
+
             include_for_bucket_hit = not (bool(item.get("should_abstain", False)) and abstained)
             if include_for_bucket_hit:
                 bucket_counts[bucket]["eligible"] += 1
                 if hit:
                     bucket_counts[bucket]["hits"] += 1
+
             if hit:
                 difficulty_counts[difficulty]["hits"] += 1
 
@@ -205,6 +267,10 @@ def _run_profile_eval(
                     "id": item["id"],
                     "answerable": answerable,
                     "abstained": abstained,
+                    "abstain_reason": abstain_reason,
+                    "used_deterministic_fallback": used_deterministic_fallback,
+                    "confidence": confidence,
+                    "answer_len": answer_len,
                     "bucket": bucket,
                     "difficulty": difficulty,
                     "hit": hit,
@@ -212,17 +278,16 @@ def _run_profile_eval(
                     "latency_ms": round(elapsed_ms, 2),
                     "retrieval_quality": result.get("retrieval_quality", {}),
                     "validation_errors": result.get("validation_errors", []),
+                    "manual_review_required": is_manual_review,
                 }
             )
 
-        hit_at_k = hit_count / total if total else 0.0
+        retrieval_hit_at_k = hit_count / total if total else 0.0
         mrr = reciprocal_rank_sum / total if total else 0.0
-        citation_precision = (
-            citation_tp / (citation_tp + citation_fp) if (citation_tp + citation_fp) else 0.0
-        )
+        citation_precision = _safe_precision(citation_tp, citation_fp)
         support_coverage = support_covered / support_total if support_total else 0.0
-        abstain_precision = abstain_tp / (abstain_tp + abstain_fp) if (abstain_tp + abstain_fp) else 0.0
-        abstain_recall = abstain_tp / (abstain_tp + abstain_fn) if (abstain_tp + abstain_fn) else 0.0
+        abstain_precision = _safe_precision(abstain_tp, abstain_fp)
+        abstain_recall = _safe_recall(abstain_tp, abstain_fn)
         p50_ms = _percentile(latencies_ms, 50)
         p95_ms = _percentile(latencies_ms, 95)
         adversarial_abstain_rate = (
@@ -254,11 +319,30 @@ def _run_profile_eval(
             "fn": abstain_fn,
         }
 
+        abstain_by_bucket_metrics: dict[str, dict[str, float | int]] = {}
+        for bucket, vals in abstain_by_bucket.items():
+            tp = vals["tp"]
+            fp = vals["fp"]
+            fn = vals["fn"]
+            abstain_by_bucket_metrics[bucket] = {
+                "total": vals["total"],
+                "tp": tp,
+                "fp": fp,
+                "fn": fn,
+                "precision": _safe_precision(tp, fp),
+                "recall": _safe_recall(tp, fn),
+            }
+
+        false_abstain_reasons_top = [
+            {"reason": reason, "count": count}
+            for reason, count in false_abstain_reasons.most_common(10)
+        ]
+
         return {
             "profile": profile,
             "dataset_size": total,
             "metrics": {
-                "hit_at_k": hit_at_k,
+                "retrieval_hit_at_k": retrieval_hit_at_k,
                 "mrr": mrr,
                 "citation_precision": citation_precision,
                 "support_coverage": support_coverage,
@@ -269,13 +353,20 @@ def _run_profile_eval(
                 "latency_p95_ms": p95_ms,
             },
             "per_bucket": {
-                "hit_at_k": per_bucket_hit_at_k,
+                "retrieval_hit_at_k": per_bucket_hit_at_k,
             },
             "per_difficulty": {
-                "hit_at_k": per_difficulty_hit_at_k,
+                "retrieval_hit_at_k": per_difficulty_hit_at_k,
             },
             "citation_precision_by_source_type": citation_precision_by_source_type,
+            "citation_scoring": {
+                "scored_rows": scored_for_citation_count,
+                "skipped_rows": skipped_citation_scoring_count,
+                "manual_review_rows": manual_review_row_count,
+            },
             "abstain_subset": abstain_subset,
+            "abstain_by_bucket": abstain_by_bucket_metrics,
+            "false_abstain_reasons_top": false_abstain_reasons_top,
             "adversarial_abstain": {
                 "total": adversarial_total,
                 "correct_abstain": adversarial_correct_abstain,
@@ -340,7 +431,7 @@ def run_eval(
         "",
         f"| Metric | {primary_profile} | {secondary_profile} |",
         "|---|---:|---:|",
-        f"| Hit@k | {p['hit_at_k']:.3f} | {s['hit_at_k']:.3f} |",
+        f"| Retrieval Hit@k | {p['retrieval_hit_at_k']:.3f} | {s['retrieval_hit_at_k']:.3f} |",
         f"| MRR | {p['mrr']:.3f} | {s['mrr']:.3f} |",
         f"| Citation precision | {p['citation_precision']:.3f} | {s['citation_precision']:.3f} |",
         f"| Support coverage | {p['support_coverage']:.3f} | {s['support_coverage']:.3f} |",
@@ -350,12 +441,12 @@ def run_eval(
         f"| Latency P50 (ms) | {p['latency_p50_ms']:.1f} | {s['latency_p50_ms']:.1f} |",
         f"| Latency P95 (ms) | {p['latency_p95_ms']:.1f} | {s['latency_p95_ms']:.1f} |",
         "",
-        "## Per-Bucket Hit@k",
+        "## Per-Bucket Retrieval Hit@k",
     ]
 
     bucket_keys = sorted(
-        set(report["profiles"][primary_profile].get("per_bucket", {}).get("hit_at_k", {}).keys())
-        | set(report["profiles"][secondary_profile].get("per_bucket", {}).get("hit_at_k", {}).keys())
+        set(report["profiles"][primary_profile].get("per_bucket", {}).get("retrieval_hit_at_k", {}).keys())
+        | set(report["profiles"][secondary_profile].get("per_bucket", {}).get("retrieval_hit_at_k", {}).keys())
     )
     if bucket_keys:
         md.extend([
@@ -364,8 +455,8 @@ def run_eval(
             "|---|---:|---:|",
         ])
         for key in bucket_keys:
-            p_val = report["profiles"][primary_profile].get("per_bucket", {}).get("hit_at_k", {}).get(key, 0.0)
-            s_val = report["profiles"][secondary_profile].get("per_bucket", {}).get("hit_at_k", {}).get(key, 0.0)
+            p_val = report["profiles"][primary_profile].get("per_bucket", {}).get("retrieval_hit_at_k", {}).get(key, 0.0)
+            s_val = report["profiles"][secondary_profile].get("per_bucket", {}).get("retrieval_hit_at_k", {}).get(key, 0.0)
             p_display = f"{p_val:.3f}" if isinstance(p_val, (float, int)) else "n/a"
             s_display = f"{s_val:.3f}" if isinstance(s_val, (float, int)) else "n/a"
             md.append(f"| {key} | {p_display} | {s_display} |")
@@ -381,6 +472,16 @@ def run_eval(
         "",
         f"- {primary_profile}: {report['profiles'][primary_profile].get('citation_precision_by_source_type', {})}",
         f"- {secondary_profile}: {report['profiles'][secondary_profile].get('citation_precision_by_source_type', {})}",
+        "",
+        "## Citation Scoring Coverage",
+        "",
+        f"- {primary_profile}: {report['profiles'][primary_profile].get('citation_scoring', {})}",
+        f"- {secondary_profile}: {report['profiles'][secondary_profile].get('citation_scoring', {})}",
+        "",
+        "## Top False-Abstain Reasons",
+        "",
+        f"- {primary_profile}: {report['profiles'][primary_profile].get('false_abstain_reasons_top', [])}",
+        f"- {secondary_profile}: {report['profiles'][secondary_profile].get('false_abstain_reasons_top', [])}",
     ])
 
     with MD_REPORT_PATH.open("w", encoding="utf-8") as f:

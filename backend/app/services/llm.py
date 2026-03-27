@@ -53,13 +53,28 @@ def invoke_synthesis(
     timeout_seconds: float,
     max_output_tokens: int,
 ) -> str:
-    """Invoke the chat model for synthesis using native Ollama HTTP API.
+    """Invoke synthesis using Ollama chat endpoint with robust stop controls.
 
-    Uses /no_think directive and the raw Ollama REST endpoint directly
-    to avoid LangChain ChatOllama's content/thinking field splitting
-    that causes qwen3.5 thinking models to return empty .content strings.
+    Uses /no_think and configurable stop sequences to reduce malformed JSON output.
     """
     url = f"{settings.ollama_base_url.rstrip('/')}/api/chat"
+
+    # Start with configured stop sequences, then add safe synthesis guards.
+    stop_sequences = list(settings.stop_sequences)
+    for s in ["</think>", "```", "\n\nHuman:", "\n\nUSER QUESTION:"]:
+        if s not in stop_sequences:
+            stop_sequences.append(s)
+
+    options: dict[str, Any] = {
+        "temperature": settings.model_temperature,
+        "top_p": settings.model_top_p,
+        "top_k": settings.model_top_k,
+        "repeat_penalty": settings.model_repetition_penalty,
+        "num_predict": max_output_tokens,
+    }
+    if stop_sequences:
+        options["stop"] = stop_sequences
+
     payload = {
         "model": settings.ollama_chat_model,
         "messages": [
@@ -67,14 +82,9 @@ def invoke_synthesis(
             {"role": "user", "content": prompt},
         ],
         "stream": False,
-        "options": {
-            "temperature": settings.model_temperature,
-            "top_p": settings.model_top_p,
-            "top_k": settings.model_top_k,
-            "repeat_penalty": settings.model_repetition_penalty,
-            "num_predict": max_output_tokens,
-        },
+        "options": options,
     }
+
     try:
         response = requests.post(url, json=payload, timeout=timeout_seconds)
         response.raise_for_status()

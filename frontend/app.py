@@ -12,7 +12,7 @@ import streamlit as st
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000/chat")
 BACKEND_STREAM_URL = os.getenv("BACKEND_STREAM_URL", "http://localhost:8000/chat/stream")
 HEALTH_URL = os.getenv("BACKEND_HEALTH_URL", "http://localhost:8000/health")
-CHAT_TIMEOUT_SECONDS = float(os.getenv("CHAT_TIMEOUT_SECONDS", "90"))
+CHAT_TIMEOUT_SECONDS = float(os.getenv("CHAT_TIMEOUT_SECONDS", "120"))
 MAX_CHAT_RETRIES = int(os.getenv("CHAT_MAX_RETRIES", "2"))
 MAX_HEALTH_RETRIES = int(os.getenv("HEALTH_MAX_RETRIES", "2"))
 
@@ -132,6 +132,7 @@ def _render_trace(trace: list[dict[str, Any]]) -> None:
         st.caption("No trace available")
         return
     color_by_node = {
+        "normalize_query": "blue",
         "planning": "blue",
         "retrieval": "teal",
         "adequacy": "orange",
@@ -141,7 +142,8 @@ def _render_trace(trace: list[dict[str, Any]]) -> None:
         "finalize": "gray",
     }
     for event in trace:
-        node = str(event.get("node", "unknown"))
+        raw_node = str(event.get("node", "unknown"))
+        node = raw_node.strip().lower().replace(" ", "_")
         status = str(event.get("status", "unknown"))
         detail = str(event.get("detail", ""))
         ts = str(event.get("ts", ""))
@@ -258,11 +260,22 @@ def _stream_chat(query: str) -> tuple[dict[str, Any] | None, str | None]:
             break
 
     if final_payload is None:
+        if live_answer.strip():
+            # graceful fallback
+            return {
+                "answer": live_answer,
+                "citations": [],
+                "confidence": 0.35,
+                "abstained": False,
+                "abstain_reason": None,
+                "trace": [{"node": "finalize", "status": "degraded", "detail": "stream_missing_final"}],
+                "retrieval_quality": {},
+                "stage_timings": {},
+            }, None
         return None, "stream_missing_final"
 
     final_payload["answer"] = live_answer or str(final_payload.get("answer", ""))
     return final_payload, None
-
 
 def _load_ingestion_stats() -> dict[str, Any]:
     report_path = Path("backend/resources/ingestion_report.json")

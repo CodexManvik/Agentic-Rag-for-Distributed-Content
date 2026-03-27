@@ -220,6 +220,7 @@ def run_workflow(query: str) -> NavigatorState:
         "abstained": False,
         "abstain_reason": None,
         "confidence": 0.0,
+        "used_deterministic_fallback": False,
         "cited_indices": [],
         "synthesis_output": {
             "answer": "",

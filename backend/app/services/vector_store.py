@@ -272,26 +272,24 @@ def query_chunks(queries: Iterable[str], top_k: int | None = None) -> list[Retri
     per_query_k = settings.effective_retrieval_per_query_k
     bm25_k = settings.retrieval_bm25_k
     merged: dict[str, RetrievedChunk] = {}
+
     vector_weight = max(0.0, settings.vector_weight)
     bm25_weight = max(0.0, settings.bm25_weight if settings.hybrid_retrieval_enabled else 0.0)
     denom = vector_weight + bm25_weight
     if denom <= 0:
-        vector_weight = 1.0
-        bm25_weight = 0.0
-        denom = 1.0
+        vector_weight, bm25_weight, denom = 1.0, 0.0, 1.0
     vector_weight /= denom
     bm25_weight /= denom
 
-    primary_query = query_list[0]
-    primary_terms = _query_terms(primary_query)
-    workflow_intent = _is_workflow_intent_query(primary_query)
-    min_term_overlap = (
-        settings.retrieval_workflow_chunk_min_term_overlap
-        if workflow_intent
-        else settings.retrieval_chunk_min_term_overlap
-    )
-
     for query in query_list:
+        query_terms = _query_terms(query)
+        workflow_intent = _is_workflow_intent_query(query)
+        min_term_overlap = (
+            settings.retrieval_workflow_chunk_min_term_overlap
+            if workflow_intent
+            else settings.retrieval_chunk_min_term_overlap
+        )
+
         vector_rows = _vector_candidates(query, per_query_k)
         bm25_scores = _bm25_candidates(query, bm25_k)
 
@@ -300,13 +298,14 @@ def query_chunks(queries: Iterable[str], top_k: int | None = None) -> list[Retri
             metadata = row["metadata"]
             content = row["content"]
             distance = row["distance"]
+
             vector_score = _normalize_distance(distance)
             keyword_score = bm25_scores.get(str(doc_id), 0.0)
-            overlap_count = _chunk_term_overlap_count(primary_terms, content)
-            if primary_terms and overlap_count < min_term_overlap:
+            overlap_count = _chunk_term_overlap_count(query_terms, content)
+            if query_terms and overlap_count < min_term_overlap:
                 continue
 
-            source_multiplier = _source_boost(primary_query, metadata, str(metadata.get("source", "unknown")))
+            source_multiplier = _source_boost(query, metadata, str(metadata.get("source", "unknown")))
             score = (vector_weight * vector_score + bm25_weight * keyword_score) * source_multiplier
 
             if doc_id not in merged:
@@ -396,6 +395,18 @@ def assess_retrieval_adequacy(
         and entity_overlap_ratio >= settings.retrieval_entity_overlap_min
         and top_relevance_ok
     )
+
+    if settings.normalized_runtime_profile == "low_latency":
+        moderate_support = (
+            max_score >= max(0.20, settings.retrieval_min_score * 0.7)
+            and chunk_count >= max(2, settings.retrieval_min_chunks)
+            and source_diversity >= 1
+        )
+        if moderate_support:
+            adequate = True
+            reason = "Adequate evidence (low-latency composite support)"
+        elif not adequate:
+            reason = "Evidence quality below threshold"
 
     # Low-latency profile override
     if (

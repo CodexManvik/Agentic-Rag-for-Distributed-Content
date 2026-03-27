@@ -57,6 +57,7 @@ class NavigatorState(TypedDict):
     retries_used: int
     validation_retries_used: int
     validation_errors: list[str]
+    used_deterministic_fallback: bool
     abstained: bool
     abstain_reason: str | None
     confidence: float

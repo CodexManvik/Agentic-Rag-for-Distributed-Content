@@ -4,25 +4,46 @@ Local-only, open-source Agentic RAG system for public distributed content (web +
 
 ## Problem to Solution Mapping
 
-Problem: knowledge is fragmented across multiple sources and users need reliable answers.
+Problem: knowledge is fragmented across multiple sources and users need reliable, citation-backed answers without hallucination.
 
-Solution: an adaptive multi-agent LangGraph pipeline that plans queries, retrieves evidence, scores adequacy, reformulates when needed, synthesizes JSON-grounded answers, validates citations, and abstains when evidence is weak.
+Solution: an adaptive multi-agent LangGraph pipeline that plans queries, retrieves evidence, scores adequacy, reformulates when needed, synthesizes JSON-grounded answers, validates citations, and abstains when evidence is weak or the query is out of scope.
+
+## Architecture
+
+```
+frontend/app.py (Streamlit)
+    └── POST /chat  →  backend/app/main.py (FastAPI)
+                            └── app/graph/workflow.py (LangGraph)
+                                    ├── nodes.py     (Planning, Retrieval, Adequacy, Reformulation, Synthesis, Validation, Abstention)
+                                    └── state.py     (Typed AgentState)
+                        app/services/
+                            ├── vector_store.py   (ChromaDB + BM25 hybrid retrieval)
+                            ├── ingestion.py      (chunking, dedup, metadata enrichment)
+                            ├── llm.py            (Ollama client, structured JSON output)
+                            ├── guardrails.py     (citation validator, regen policy)
+                            ├── policy.py         (public-source-only + domain allowlist)
+                            ├── compliance.py     (abstention scope guard)
+                            └── chunking.py       (text splitter config)
+        backend/
+            ├── run_ingestion.py   (CLI: ingest URLs, PDFs, docs)
+            ├── resources/         (resource_pack.yaml, ingestion reports)
+            ├── eval/              (evaluation harness, datasets, reports)
+            ├── scripts/           (snapshot utility)
+            └── tests/
+```
 
 ## Tech Stack
 
-- Backend: FastAPI
-- Agent Orchestration: LangGraph
-- Vector Store: ChromaDB
-- Chat Model: Ollama `qwen3.5:4b` (or closest available local qwen3.5 4b variant)
-- Embeddings: Ollama `nomic-embed-text:latest`
-- Frontend: Streamlit
-- Infra: Docker Compose
-
-## Public Data Compliance
-
-- Public-only ingestion posture is enforced.
-- URL ingestion is allowlisted by domain (`ALLOWED_SOURCE_DOMAINS`).
-- UI includes public-source warning banner.
+| Component | Technology |
+|---|---|
+| Backend API | FastAPI (async) |
+| Agent Orchestration | LangGraph |
+| Vector Store | ChromaDB |
+| Retrieval | Hybrid: vector similarity + BM25 |
+| Chat Model | Ollama `qwen3.5:0.8b` |
+| Embeddings | Ollama `nomic-embed-text:latest` |
+| Frontend | Streamlit |
+| Infra | Docker Compose |
 
 ## Agent Workflow
 
@@ -41,8 +62,8 @@ flowchart TD
 
 Why this is truly agentic:
 - Explicit role separation across planning, retrieval, adequacy, reformulation, synthesis, and validation.
-- Conditional routing and bounded retries.
-- Trace persisted in state and surfaced in UI.
+- Conditional routing and bounded retries driven by state machine transitions.
+- Full trace persisted in `AgentState` and surfaced in the UI.
 
 ## Hallucination Prevention and Citation Guardrails
 
@@ -51,192 +72,159 @@ Why this is truly agentic:
   - factual sentence citation coverage (`[n]`)
   - index validity against current citation set
   - structured cited index sanity checks
-- Regenerate-once policy with stricter synthesis constraints.
-- Hard fallback to abstention if validation still fails.
-- Policy-aware abstention guard blocks private/internal/confidential intent before synthesis.
+- Regenerate-once policy with stricter synthesis constraints on first validation failure.
+- Hard fallback to abstention if validation still fails after regen.
+- Policy-aware abstention guard (`compliance.py`) blocks private/internal/confidential intent before synthesis.
 
-## Retrieval Quality Upgrades
+## Retrieval Quality
 
 - Multi-query retrieval from planner output.
 - Hybrid retrieval scoring: vector similarity + BM25 signal.
-- Metadata enrichment:
-  - source type
-  - title
-  - section/header
-  - page number (PDF)
-  - URL/path/anchor
-  - ingestion timestamp
-- Deduplication by content hash at ingestion time.
-- Adequacy scoring based on score threshold, chunk count, and source diversity.
-- Tightened adequacy scoring with hard-query boosts and query/entity overlap checks to prevent overconfident retrieval matches.
+- Metadata enrichment per chunk: source type, title, section/header, page number (PDF), URL/path/anchor, ingestion timestamp.
+- Content-hash deduplication at ingestion time.
+- Adequacy scoring based on score threshold, chunk count, source diversity, and query/entity overlap checks.
 
-## Resource Pack
+## Public Data Compliance
 
-Resource manifest:
-- `backend/resources/resource_pack.yaml`
-
-Ingestion reports:
-- `backend/resources/ingestion_report.json`
-- `backend/resources/ingestion_report.md`
-
-### Curated Public URLs
-
-Confluence/public knowledge governance:
-- https://support.atlassian.com/confluence-cloud/docs/make-a-space-public/
-- https://support.atlassian.com/confluence-cloud/docs/set-up-and-manage-public-links/
-- https://support.atlassian.com/confluence-cloud/docs/manage-public-links-across-confluence-cloud/
-- https://support.atlassian.com/confluence-cloud/docs/how-secure-are-public-links/
-- https://confluence.atlassian.com/doc/spaces-139459.html
-
-RAG/agent technical references:
-- https://docs.langchain.com/oss/python/langchain/rag
-- https://docs.langchain.com/oss/python/langchain/retrieval
-- https://python.langchain.com/docs/tutorials/rag/
-- https://python.langchain.com/docs/concepts/
-- https://python.langchain.com/docs/introduction/
-
-Optional demo-context pages:
-- https://www.atlassian.com/software/confluence/demo
-- https://www.langchain.com/retrieval
-
-Additional long-form technical references:
-- https://langchain-ai.github.io/langgraph/concepts/why-langgraph/
-- https://langchain-ai.github.io/langgraph/how-tos/
-- https://docs.langchain.com/oss/python/langchain/overview
-- https://ai.google.dev/gemini-api/docs
-- https://www.anthropic.com/engineering
-- https://openai.com/index/introducing-structured-outputs-in-the-api/
-
-Public PDF references (resource pack `pdf_urls`):
-- 10 public arXiv technical PDFs are included in `backend/resources/resource_pack.yaml` for mixed long-form ingestion.
-
-### Resource Pack Commands
-
-```bash
-python backend/run_ingestion.py --reset --use-pack
-python backend/run_ingestion.py --use-pack --save-report backend/resources/ingestion_report.json
-python backend/run_ingestion.py --use-pack --validate-resources --save-report backend/resources/ingestion_report.json
-```
-
-Source priority order used by CLI:
-1. explicit CLI URLs/PDF directory
-2. resource pack values when `--use-pack`
-3. built-in defaults
-
-Source metadata and reporting:
-- Ingestion report now includes source-level status with `source_type`, `domain`, chunks added, and fail reasons.
-- Report artifacts: `backend/resources/ingestion_report.json` and `backend/resources/ingestion_report.md`.
-
-Use optional snapshot utility:
-
-```bash
-python backend/scripts/save_resources.py --urls https://python.langchain.com/docs/introduction/ --output-dir backend/resources/pdfs
-```
-
-Reminder: ingest only public or approved documentation.
+- Public-only ingestion posture enforced via `PUBLIC_SOURCES_ONLY=true`.
+- URL ingestion allowlisted by domain via `ALLOWED_SOURCE_DOMAINS`.
+- Disallowed-domain path covered by integration tests.
+- UI includes a public-source warning banner.
 
 ## Evaluation Harness
 
-Location: `backend/eval`
+Location: `backend/eval/`
 
-Includes:
-- `dataset.jsonl` (20 QA entries, answerable + unanswerable)
-- `dataset_dev.jsonl` and `dataset_hidden.jsonl` (split datasets to reduce leakage)
-- `eval_matrix_target.json` (target bucket counts for 120-question balanced matrix)
-- `generate_candidate_dataset.py` (semi-automated candidate generation from ingested sections)
-- `prepare_dataset_splits.py` (schema upgrade + dev/hidden split)
-- `check_matrix_coverage.py` (bucket coverage and abstain-ratio validation)
-- `run_eval.py` computes:
-  - Hit@k
-  - MRR
-  - citation precision
-  - support coverage
-  - abstention precision and recall
-  - adversarial abstain rate
-  - per-bucket Hit@k
-  - per-difficulty Hit@k
-  - citation precision by source type
-  - abstain-subset metrics (`should_abstain` precision/recall)
+| File | Purpose |
+|---|---|
+| `dataset_dev.jsonl` | 120-question dev split (answerable + unanswerable) |
+| `dataset_hidden.jsonl` | Hidden split for final judge validation |
+| `dataset.jsonl` | Full unfiltered dataset |
+| `eval_matrix_target.json` | Target bucket counts (120-question balanced matrix) |
+| `run_eval.py` | Main eval runner, computes all metrics |
+| `generate_candidate_dataset.py` | Semi-automated candidate generation from ingested sections |
+| `prepare_dataset_splits.py` | Schema upgrade + dev/hidden split |
+| `check_matrix_coverage.py` | Bucket coverage and abstain-ratio validation |
+| `build_demo_matrix_dataset.py` | Demo matrix builder |
 
-Outputs:
-- `backend/eval/eval_report.json`
-- `backend/eval/eval_report.md`
+`run_eval.py` computes: Hit@k, MRR, citation precision, support coverage, abstain precision, abstain recall, adversarial abstain rate, per-bucket Hit@k, per-difficulty Hit@k, citation precision by source type, and abstain subset (tp/fp/fn).
+
+Outputs: `backend/eval/eval_report.json` and `backend/eval/eval_report.md`.
 
 ### Measured Profile Metrics (latest run)
 
-Source: `backend/eval/eval_report.json` (dataset size: 120)
+Source: `backend/eval/eval_report.json`
+Dataset: `backend/eval/dataset_dev.jsonl` — **120 questions**
+Hardware: Windows-10-10.0.26200-SP0, Python 3.11.0
+Chat model: `qwen3.5:0.8b` | Embedding model: `nomic-embed-text:latest`
 
-| Metric | Balanced | Low Latency |
+| Metric | balanced | low_latency |
 |---|---:|---:|
-| Hit@k | 0.733 | 0.725 |
-| MRR | 0.690 | 0.675 |
-| Citation precision | 0.775 | 0.763 |
-| Support coverage | 0.642 | 0.635 |
-| Abstain precision | 1.000 | 0.297* |
-| Abstain recall | 0.967 | 1.000 |
+| Retrieval Hit@k | 0.383 | 0.417 |
+| MRR | 0.115 | 0.129 |
+| Citation precision | 0.309 | 0.177 |
+| Support coverage | 0.117 | 0.146 |
+| Abstain precision | 0.345 | 0.580 |
+| Abstain recall | 1.000 | 0.967 |
 | Adversarial abstain rate | 1.000 | 1.000 |
-| Latency P50 (ms) | 69102 | 28120 |
+| Latency P50 (ms) | 40,277 | 40,384 |
+| Latency P95 (ms) | 75,954 | 49,155 |
 
-*Note: low-latency abstain precision is artificially low due to overlap check bug (Fix 1).
-After Fix 1, low-latency abstain precision is expected to match balanced (>= 0.95).* 
+### Per-Bucket Retrieval Hit@k
 
-Adversarial bucket demo metric:
-- `adversarial_abstain_rate`: 1.000 (10/10)
-- Per-bucket Hit@k excludes correctly abstained rows (`should_abstain=true` and `abstained=true`) to avoid false negatives.
-
-Hardware + runtime profile used for this run:
-- Python: 3.11.0
-- Platform: Windows-10-10.0.26200-SP0
-- Chat model: qwen3.5:0.8b
-- Embedding model: nomic-embed-text:latest
-
-### Baseline vs Current Evidence
-
-Historical baseline (initial linear MVP without adaptive routing/validator hardening):
-
-| Metric | Historical Baseline | Current Balanced |
+| Bucket | balanced | low_latency |
 |---|---:|---:|
-| Hit@k | 0.410 | 0.733 |
-| MRR | 0.290 | 0.690 |
-| Citation precision | 0.520 | 0.775 |
-| Support coverage | 0.460 | 0.642 |
+| adversarial_noisy | n/a | n/a |
+| comparison_questions | 0.000 | 0.000 |
+| edge_ambiguity | 0.000 | 0.000 |
+| fact_lookup | 0.350 | 0.500 |
+| multi_hop_synthesis | 0.000 | 0.000 |
+| procedure_how_to | 0.600 | 0.667 |
+| unanswerable_out_of_scope | n/a | 1.000 |
 
-This shows measurable quality gains after adding adaptive routing, citation validation, and abstention controls.
+Per-bucket rows with `should_abstain=true` and `abstained=true` are excluded to avoid false negatives.
 
-### Failure Categories (from latest eval)
+### Per-Difficulty Hit@k (balanced profile)
 
-Balanced profile (`dataset_size=20`):
-- `false_abstain`: 0/15 answerable queries
-- `missed_abstain`: 4/5 unanswerable queries
-- `good_abstain`: 1/5 unanswerable queries
-- `retrieval_adequate_count`: 19/20
+| Difficulty | Hit@k |
+|---|---:|
+| medium | 0.655 |
+| hard | 0.154 |
 
-Low-latency profile (`dataset_size=20`):
-- `false_abstain`: 1/15 answerable queries
-- `missed_abstain`: 4/5 unanswerable queries
-- `good_abstain`: 1/5 unanswerable queries
-- `retrieval_adequate_count`: 18/20
+### Abstain Subset
 
-Interpretation:
-- Current limitation is conservative abstention recall on hard unanswerable prompts.
-- Next planned fix: strengthen weak-evidence routing thresholds and add contradiction/conflict checks before synthesis.
+| Profile | Required | TP | FP | FN | Precision | Recall |
+|---|---:|---:|---:|---:|---:|---:|
+| balanced | 30 | 30 | 57 | 0 | 0.345 | 1.000 |
+| low_latency | 30 | 29 | 21 | 1 | 0.580 | 0.967 |
 
-### Ingestion and Scope Evidence
+### Citation Precision by Source Type (balanced / low_latency)
 
-Resource-pack ingestion evidence (`backend/resources/ingestion_report.json`):
-- `documents_processed`: 12
-- `chunks_added`: 97
-- `skipped_duplicates`: 18
-- `success_count`: 12
-- `failed_count`: 0
-- Confluence/Atlassian URLs included: 6/12
+| Source Type | balanced | low_latency |
+|---|---:|---:|
+| web | 0.744 | 0.651 |
+| project_doc | 0.000 | 0.000 |
+| pdf | 0.000 | 0.000 |
+| confluence | 0.000 | 0.000 |
 
-Runtime policy proof:
-- Domain allowlist enforced via `ALLOWED_SOURCE_DOMAINS`.
-- Public-source-only posture enforced via `PUBLIC_SOURCES_ONLY=true`.
-- Disallowed-domain ingestion path is covered by tests.
+### Citation Scoring Coverage
 
-## Dataset Schema (Strengthened)
+| Profile | Scored rows | Skipped rows |
+|---|---:|---:|
+| balanced | 33 | 87 |
+| low_latency | 69 | 51 |
+
+### Top False-Abstain Reasons (balanced profile)
+
+| Reason | Count |
+|---|---:|
+| Evidence is insufficient or unverifiable | 33 |
+| Synthesis parse failure after strict retry | 24 |
+
+Root cause: `qwen3.5:0.8b` at 4GB VRAM produces frequent synthesis parse failures; the stricter retry policy escalates these to abstention. Switching to `qwen3.5:4b` or higher eliminates the parse failure abstain path.
+
+### Adversarial Abstain
+
+- `adversarial_abstain_rate`: **1.000** (10/10) — both profiles.
+- All 10 adversarial/noisy queries correctly abstained in both profiles.
+
+### Baseline vs. Current Evidence
+
+| Metric | Historical Baseline | Current (balanced, 120q) |
+|---|---:|---:|
+| Hit@k | 0.410 | 0.383 |
+| MRR | 0.290 | 0.115 |
+| Citation precision | 0.520 | 0.309 |
+| Support coverage | 0.460 | 0.117 |
+
+**Interpretation:** The regression vs. baseline reflects two factors: (1) dataset expanded from 20 to 120 questions with harder multi-hop and comparison buckets that the 0.8b model cannot consistently answer, and (2) `qwen3.5:0.8b` synthesis parse failures inflate false-abstain counts, suppressing citation and coverage scores. Adversarial abstain remains perfect at 1.000.
+
+### Final-Metrics Publish Gates
+
+Before calling metrics "final" for the judge deck:
+- Abstain precision > 0.80
+- Abstain recall > 0.70
+- Dataset has 60+ rows
+- All 7 matrix buckets represented at target counts
+
+## Balanced Eval Matrix Target
+
+Target bucket counts (`backend/eval/eval_matrix_target.json`):
+
+| Bucket | Target |
+|---|---:|
+| fact_lookup | 20 |
+| multi_hop_synthesis | 25 |
+| comparison_questions | 20 |
+| procedure_how_to | 15 |
+| edge_ambiguity | 10 |
+| unanswerable_out_of_scope | 20 |
+| adversarial_noisy | 10 |
+| **Total** | **120** |
+
+Abstain-required minimum ratio: 15% (recommended 15–20%).
+
+## Dataset Schema
 
 Each eval row supports:
 - `id`
@@ -250,48 +238,62 @@ Each eval row supports:
 - `tags`
 - `bucket`
 
-Backward compatibility:
-- Legacy fields such as `expected_sources` and `answerable` are normalized automatically by `run_eval.py`.
+Legacy fields `expected_sources` and `answerable` are normalized automatically by `run_eval.py`.
 
-## Balanced Eval Matrix Target
+## Resource Pack
 
-Target bucket counts (`backend/eval/eval_matrix_target.json`):
-- Fact lookup: 20
-- Multi-hop synthesis: 25
-- Comparison questions: 20
-- Procedure/how-to: 15
-- Edge ambiguity: 10
-- Unanswerable/out-of-scope: 20
-- Adversarial/noisy phrasing: 10
+Manifest: `backend/resources/resource_pack.yaml`
 
-Total target: 120
+Ingestion reports:
+- `backend/resources/ingestion_report.json`
+- `backend/resources/ingestion_report.md`
 
-Abstain-required minimum ratio: 15% (recommended 15-20%).
+Last ingestion run (2026-03-27T07:34:27Z):
+- `documents_processed`: 2
+- `chunks_added`: 14
+- `skipped_duplicates`: 0
+- `success_count`: 2 / `failed_count`: 0
+
+> Re-ingest with the full resource pack (`--use-pack`) to populate web + PDF + Confluence sources before running eval.
+
+### Resource Pack Commands
+
+```bash
+python backend/run_ingestion.py --reset --use-pack
+python backend/run_ingestion.py --use-pack --save-report backend/resources/ingestion_report.json
+python backend/run_ingestion.py --use-pack --validate-resources --save-report backend/resources/ingestion_report.json
+```
+
+Source priority order:
+1. Explicit CLI URLs/PDF directory
+2. Resource pack values when `--use-pack`
+3. Built-in defaults
+
+Optional snapshot utility:
+
+```bash
+python backend/scripts/save_resources.py --urls https://python.langchain.com/docs/introduction/ --output-dir backend/resources/pdfs
+```
 
 ## Dataset Build Workflow
 
-1. Expand and ingest sources:
+1. Ingest sources:
 ```bash
 make ingest-pack
 ```
-
 2. Generate candidate dataset rows from ingested section metadata:
 ```bash
 make eval-candidates
 ```
-
 3. Manually validate and curate gold labels (`expected_answer`, `must_cite_sources`, abstain flags).
-
 4. Prepare dev/hidden split:
 ```bash
 make eval-split
 ```
-
 5. Check matrix coverage:
 ```bash
 make eval-matrix-check
 ```
-
 6. Run profile evaluation on split datasets:
 ```bash
 make eval-dev
@@ -300,20 +302,20 @@ make eval-hidden
 
 ## Local Setup
 
-1. Install Ollama and start it.
-2. Pull required local models.
-3. Install Python dependencies.
-4. Ingest public sources.
-5. Run backend + frontend.
+### Prerequisites
 
-### Ollama model pull commands
+- Python 3.11+
+- Ollama installed and running
+- Docker + Docker Compose (for containerized run)
+
+### Ollama model pull
 
 ```bash
-ollama pull qwen3.5:4b
+ollama pull qwen3.5:0.8b
 ollama pull nomic-embed-text:latest
 ```
 
-If `qwen3.5:4b` is unavailable in your environment, pull the closest local qwen3.5 4b-compatible tag and set `OLLAMA_CHAT_MODEL` accordingly.
+For higher synthesis quality on hardware that supports it, use `qwen3.5:4b` and set `OLLAMA_CHAT_MODEL=qwen3.5:4b` in `.env`.
 
 ### Environment
 
@@ -321,33 +323,55 @@ If `qwen3.5:4b` is unavailable in your environment, pull the closest local qwen3
 cp .env.example .env
 ```
 
-### Install and run with Docker
+`.env` structure:
+
+```bash
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_CHAT_MODEL=qwen3.5:0.8b
+OLLAMA_EMBED_MODEL=nomic-embed-text:latest
+CHROMA_PERSIST_DIR=./chroma_data
+ALLOWED_SOURCE_DOMAINS=atlassian.com,langchain.com,langchain-ai.github.io,python.langchain.com,github.com,arxiv.org,ai.google.dev,anthropic.com,openai.com
+PUBLIC_SOURCES_ONLY=true
+```
+
+### Run with Docker
 
 ```bash
 docker compose up --build
 ```
 
-### Install and run locally
+### Run locally
 
 ```bash
 pip install -r requirements.txt
-python backend/run_ingestion.py --reset
-cd backend 
+python backend/run_ingestion.py --reset --use-pack
+cd backend
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 streamlit run frontend/app.py --server.port 8501
 ```
 
-## Demo Script (Judge Flow)
+## API
 
-1. Normal answer:
-   - Ask a direct docs-grounded query.
-   - Show citations and confidence.
-2. Hard multi-hop query:
-   - Use hard query button.
-   - Show adequacy + reformulation trace.
-3. Unanswerable query:
-   - Ask out-of-domain/private query.
-   - Show abstention card and reason.
+`POST /chat`
+
+Request:
+
+```json
+{
+  "query": "How does LangGraph support adaptive agent workflows?"
+}
+```
+
+Response fields:
+- `answer`
+- `citations`
+- `confidence`
+- `abstained`
+- `abstain_reason`
+- `retrieval_quality`
+- `trace`
+
+Swagger UI: `http://localhost:8000/docs`
 
 ## Commands
 
@@ -381,36 +405,14 @@ make demo-prewarm
 make demo-cache
 ```
 
-## Final-Metrics Publish Gates
+## Demo Script (Judge Flow)
 
-Before calling metrics "final" for judge deck:
-- Abstain precision > 0.80
-- Abstain recall > 0.70
-- Dataset has 60+ rows
-- All 7 matrix buckets represented (preferably at target counts)
-
-## API
-
-`POST /chat`
-
-Request:
-
-```json
-{
-  "query": "How does LangGraph support adaptive agent workflows?"
-}
-```
-
-Response includes:
-- answer
-- citations
-- confidence
-- abstained
-- abstain_reason
-- retrieval_quality
-- trace
+1. **Normal grounded answer:** Ask a direct docs-grounded query. Verify citations and confidence score.
+2. **Hard multi-hop query:** Use the hard query button. Observe adequacy check, query reformulation trace, and final synthesis.
+3. **Unanswerable query:** Ask an out-of-domain or private query. Verify abstention card and abstain reason.
 
 ## Notes
 
-- No Azure/OpenAI dependencies or fallback paths are used.
+- No Azure/OpenAI dependencies or fallback paths.
 - Designed for groundedness first; abstention is preferred over unsupported generation.
+- Current known bottleneck: `qwen3.5:0.8b` synthesis parse failures inflate false-abstain rate. Resolve by using `qwen3.5:4b` on hardware with >= 6GB VRAM.

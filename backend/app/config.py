@@ -6,12 +6,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
-    ollama_chat_model: str = "qwen3.5:2b"
+    ollama_chat_model: str = "qwen3.5:0.8b"
     ollama_embedding_model: str = "nomic-embed-text:latest"
 
     chroma_collection_name: str = "knowledge_base"
     chroma_persist_directory: str = "./chroma_data"
-    retrieval_top_k: int = 4
+    retrieval_top_k: int = 6
     retrieval_per_query_k: int = 4
     retrieval_bm25_k: int = 6
     hybrid_retrieval_enabled: bool = True
@@ -58,8 +58,8 @@ class Settings(BaseSettings):
     low_latency_reformulation_request_timeout_seconds: float = 6.0
     reformulation_max_output_tokens: int = 96
     low_latency_reformulation_max_output_tokens: int = 64
-    synthesis_request_timeout_seconds: float = 90.0
-    low_latency_synthesis_request_timeout_seconds: float = 45.0
+    synthesis_request_timeout_seconds: float = 120.0
+    low_latency_synthesis_request_timeout_seconds: float = 70.0
     synthesis_max_output_tokens: int = 700
     low_latency_synthesis_max_output_tokens: int = 400
     model_stop_sequences: str = ""
@@ -99,7 +99,7 @@ class Settings(BaseSettings):
             return {
                 "planner_max_subqueries": 3,
                 "retrieval_per_query_k": min(self.retrieval_per_query_k, 3),
-                "retrieval_top_k": min(max(self.retrieval_top_k, 4), 5),
+                "retrieval_top_k": min(max(self.retrieval_top_k, 5), 6),
                 "context_chunk_limit": 4,
                 "context_chunk_char_limit": 420,
             }

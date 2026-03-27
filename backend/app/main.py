@@ -74,44 +74,49 @@ def chat(payload: ChatRequest) -> ChatResponse:
         stage_timings=result.get("stage_timings", {}),
     )
 
-
 @app.post("/chat/stream")
 async def chat_stream(payload: ChatRequest) -> StreamingResponse:
     if _health_state["status"] != "ok":
         raise HTTPException(status_code=503, detail=f"Service unavailable: {_health_state['reason']}")
 
     async def generate():
+        result: dict[str, Any] | None = None
+        error_message: str | None = None
+        partial_answer = ""
+
         task = asyncio.create_task(asyncio.to_thread(run_workflow, payload.query))
         yield f"data: {json.dumps({'type': 'status', 'message': 'planning and retrieval started'})}\n\n"
+
         while not task.done():
             yield f"data: {json.dumps({'type': 'heartbeat', 'message': 'working'})}\n\n"
             await asyncio.sleep(0.8)
 
         try:
             result = await task
+            answer = str(result.get("final_response", ""))
+            words = answer.split()
+            for idx, word in enumerate(words):
+                suffix = " " if idx < len(words) - 1 else ""
+                token = word + suffix
+                partial_answer += token
+                yield f"data: {json.dumps({'type': 'token', 'text': token})}\n\n"
         except Exception as exc:
-            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
-            return
-
-        answer = str(result.get("final_response", ""))
-        words = answer.split()
-        for idx, word in enumerate(words):
-            suffix = " " if idx < len(words) - 1 else ""
-            yield f"data: {json.dumps({'type': 'token', 'text': word + suffix})}\n\n"
-
-        final_payload = {
-            "type": "final",
-            "answer": answer,
-            "citations": result.get("citations", []),
-            "sub_queries": result.get("sub_queries", []),
-            "confidence": result.get("confidence", 0.0),
-            "abstained": result.get("abstained", False),
-            "abstain_reason": result.get("abstain_reason"),
-            "trace": result.get("trace", []),
-            "retrieval_quality": result.get("retrieval_quality", {}),
-            "stage_timings": result.get("stage_timings", {}),
-        }
-        yield f"data: {json.dumps(final_payload)}\n\n"
+            error_message = str(exc)
+            yield f"data: {json.dumps({'type': 'error', 'message': error_message})}\n\n"
+        finally:
+            final_payload = {
+                "type": "final",
+                "answer": partial_answer or (str(result.get("final_response", "")) if result else ""),
+                "citations": result.get("citations", []) if result else [],
+                "sub_queries": result.get("sub_queries", []) if result else [],
+                "confidence": result.get("confidence", 0.0) if result else 0.0,
+                "abstained": result.get("abstained", True) if result else True,
+                "abstain_reason": result.get("abstain_reason") if result else (error_message or "stream_error"),
+                "trace": result.get("trace", []) if result else [],
+                "retrieval_quality": result.get("retrieval_quality", {}) if result else {},
+                "stage_timings": result.get("stage_timings", {}) if result else {},
+            }
+            yield f"data: {json.dumps(final_payload)}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
