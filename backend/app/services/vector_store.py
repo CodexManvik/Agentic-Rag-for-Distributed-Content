@@ -98,6 +98,10 @@ def refresh_bm25_cache() -> None:
         _bm25_cache = _BM25Cache(ids=ids, docs=docs, bm25=BM25Okapi(corpus_tokens))
 
 
+def build_bm25_index() -> None:
+    refresh_bm25_cache()
+
+
 def _normalize_distance(distance: float) -> float:
     value = 1.0 / (1.0 + max(distance, 0.0))
     if not isfinite(value):
@@ -114,6 +118,12 @@ _STOPWORDS = {
     "of", "on", "or", "that", "the", "to", "what", "when", "where", "who", "why", "with",
 }
 
+_ENTITY_IGNORE = {
+    "what", "how", "when", "where", "who", "why", "which",
+    "compare", "summarize", "describe", "explain", "list", "show", "provide", "give",
+    "does", "do", "is", "are", "can", "should", "would",
+}
+
 
 def _query_terms(query: str) -> set[str]:
     return {t for t in _tokenize(query) if len(t) > 2 and t not in _STOPWORDS}
@@ -122,7 +132,13 @@ def _query_terms(query: str) -> set[str]:
 def _query_entities(query: str) -> set[str]:
     entities = set(re.findall(r"\b[A-Z][a-zA-Z0-9_-]{2,}\b", query))
     acronyms = set(re.findall(r"\b[A-Z]{2,}\b", query))
-    return {e.lower() for e in (entities | acronyms)}
+    out: set[str] = set()
+    for entity in (entities | acronyms):
+        lowered = entity.lower()
+        if lowered in _STOPWORDS or lowered in _ENTITY_IGNORE:
+            continue
+        out.add(lowered)
+    return out
 
 
 def _is_hard_query(query: str, sub_queries: list[str] | None = None) -> bool:
@@ -137,9 +153,6 @@ def _bm25_candidates(query: str, k: int) -> dict[str, float]:
         return {}
 
     cache = _bm25_cache
-    if cache is None:
-        refresh_bm25_cache()
-        cache = _bm25_cache
     if cache is None:
         return {}
 
@@ -278,7 +291,17 @@ def assess_retrieval_adequacy(
         and entity_overlap_ratio >= settings.retrieval_entity_overlap_min
     )
 
-    if adequate:
+    # Low-latency profile override
+    if (
+        settings.low_latency_skip_overlap_check
+        and settings.normalized_runtime_profile == "low_latency"
+        and max_score >= min_score
+        and chunk_count >= settings.retrieval_min_chunks
+    ):
+        adequate = True
+        reason = "Adequate evidence (low-latency override)"
+
+    elif adequate:
         reason = "Adequate evidence"
     elif term_overlap_ratio < settings.retrieval_query_overlap_min or entity_overlap_ratio < settings.retrieval_entity_overlap_min:
         reason = "Weak topical match to query intent"

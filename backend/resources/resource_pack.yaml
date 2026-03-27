@@ -7,6 +7,10 @@ web_urls:
   - https://support.atlassian.com/confluence-cloud/docs/manage-public-links-across-confluence-cloud/
   - https://support.atlassian.com/confluence-cloud/docs/how-secure-are-public-links/
   - https://confluence.atlassian.com/doc/spaces-139459.html
+  - https://confluence.atlassian.com/doc/create-and-edit-pages-139459.html
+  - https://confluence.atlassian.com/doc/use-confluence-cloud-139459.html
+  - https://confluence.atlassian.com/doc/confluence-user-s-guide-139764.html
+  - https://confluence.atlassian.com/doc/search-139678.html
   - https://docs.langchain.com/oss/python/langchain/rag
   - https://docs.langchain.com/oss/python/langchain/retrieval
   - https://python.langchain.com/docs/tutorials/rag/
@@ -15,11 +19,11 @@ web_urls:
   - https://www.atlassian.com/software/confluence/demo
   - https://www.langchain.com/retrieval
   - https://langchain-ai.github.io/langgraph/concepts/why-langgraph/
-  - https://langchain-ai.github.io/langgraph/how-tos/
+  - https://langchain-ai.github.io/langgraph/concepts/agentic_concepts/
+  - https://langchain-ai.github.io/langgraph/concepts/low_level/
   - https://docs.langchain.com/oss/python/langchain/overview
   - https://ai.google.dev/gemini-api/docs
   - https://www.anthropic.com/engineering
-  - https://openai.com/index/introducing-structured-outputs-in-the-api/
 pdf_urls:
   - https://arxiv.org/pdf/2005.11401.pdf
   - https://arxiv.org/pdf/2312.10997.pdf

@@ -10,6 +10,7 @@ import streamlit as st
 
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000/chat")
+BACKEND_STREAM_URL = os.getenv("BACKEND_STREAM_URL", "http://localhost:8000/chat/stream")
 HEALTH_URL = os.getenv("BACKEND_HEALTH_URL", "http://localhost:8000/health")
 CHAT_TIMEOUT_SECONDS = float(os.getenv("CHAT_TIMEOUT_SECONDS", "90"))
 MAX_CHAT_RETRIES = int(os.getenv("CHAT_MAX_RETRIES", "2"))
@@ -130,6 +131,15 @@ def _render_trace(trace: list[dict[str, Any]]) -> None:
     if not trace:
         st.caption("No trace available")
         return
+    color_by_node = {
+        "planning": "blue",
+        "retrieval": "teal",
+        "adequacy": "orange",
+        "synthesis": "violet",
+        "citation_validation": "green",
+        "abstain": "red",
+        "finalize": "gray",
+    }
     for event in trace:
         node = str(event.get("node", "unknown"))
         status = str(event.get("status", "unknown"))
@@ -137,8 +147,8 @@ def _render_trace(trace: list[dict[str, Any]]) -> None:
         ts = str(event.get("ts", ""))
         duration = event.get("duration_ms")
         duration_text = f" | {float(duration):.1f}ms" if isinstance(duration, (int, float)) else ""
-        icon = "OK" if status == "ok" else ("WARN" if status == "weak" else "FAIL")
-        st.write(f"{icon} | {node} | {status}{duration_text} | {detail}")
+        color = color_by_node.get(node, "gray")
+        st.markdown(f":{color}[**{node.upper()}**] {status}{duration_text} | {detail}")
         if ts:
             st.caption(ts)
 
@@ -175,17 +185,80 @@ def _render_citations(citations: list[dict[str, Any]], key_prefix: str) -> None:
         source = citation.get("source") or "unknown"
         url = citation.get("url") or ""
         snippet = citation.get("snippet") or ""
-        source_type = citation.get("source_type") or "unknown"
+        source_type = str(citation.get("source_type") or "web").lower()
         section = citation.get("section") or "n/a"
         page = citation.get("page_number")
         citation_index = citation.get("index", idx)
-        st.markdown(f"[{citation_index}] {source}")
+        badge_label = {
+            "confluence": "Confluence",
+            "pdf": "PDF",
+            "web": "Web",
+        }.get(source_type, source_type.upper())
+        badge_color = {
+            "confluence": "blue",
+            "pdf": "red",
+            "web": "green",
+        }.get(source_type, "gray")
+        st.markdown(f"[{citation_index}] :{badge_color}[{badge_label}] {source}")
         st.caption(f"Type: {source_type} | Section: {section} | Page: {page if page else 'n/a'}")
         if url:
             st.link_button("Open source", url, key=f"{key_prefix}-cite-{idx}")
         if snippet:
             with st.expander("Snippet", expanded=False):
                 st.write(snippet)
+
+
+def _stream_chat(query: str) -> tuple[dict[str, Any] | None, str | None]:
+    try:
+        response = _retry_request(
+            "POST",
+            BACKEND_STREAM_URL,
+            retries=MAX_CHAT_RETRIES,
+            timeout=CHAT_TIMEOUT_SECONDS,
+            json={"query": query},
+            stream=True,
+        )
+    except Exception as exc:
+        return None, str(exc)
+
+    if not response.ok:
+        return None, f"backend_http_{response.status_code}: {response.text[:240]}"
+
+    live_answer = ""
+    answer_slot = st.empty()
+    status_slot = st.empty()
+    final_payload: dict[str, Any] | None = None
+
+    for raw_line in response.iter_lines(decode_unicode=True):
+        if not raw_line:
+            continue
+        line = str(raw_line)
+        if not line.startswith("data: "):
+            continue
+        try:
+            event = json.loads(line[6:])
+        except Exception:
+            continue
+
+        event_type = str(event.get("type", ""))
+        if event_type == "status":
+            status_slot.caption(str(event.get("message", "running")))
+        elif event_type == "heartbeat":
+            status_slot.caption("Working...")
+        elif event_type == "token":
+            live_answer += str(event.get("text", ""))
+            answer_slot.markdown(live_answer)
+        elif event_type == "error":
+            return None, str(event.get("message", "stream_error"))
+        elif event_type == "final":
+            final_payload = event
+            break
+
+    if final_payload is None:
+        return None, "stream_missing_final"
+
+    final_payload["answer"] = live_answer or str(final_payload.get("answer", ""))
+    return final_payload, None
 
 
 def _load_ingestion_stats() -> dict[str, Any]:
@@ -297,6 +370,7 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
         if message["role"] == "assistant":
             confidence = float(message.get("confidence", 0.0))
+            confidence_color = "green" if confidence > 0.7 else ("orange" if confidence >= 0.4 else "red")
             rq = message.get("retrieval_quality", {})
             coverage, invalid_count = _citation_coverage(str(message.get("content", "")), len(message.get("citations", [])))
             adequate = bool(rq.get("adequate", False)) if rq else False
@@ -304,7 +378,7 @@ for message in st.session_state.messages:
             st.markdown(
                 f"<div class='assistant-card'><div><span class='{quality_class}'>"
                 f"Evidence {'adequate' if adequate else 'weak'}</span></div>"
-                f"<div class='muted'>Confidence: {confidence:.2f} | "
+                f"<div class='muted'>Confidence: <span style='color:{confidence_color};font-weight:700'>{confidence:.2f}</span> | "
                 f"Max score: {float(rq.get('max_score', 0.0)):.2f} | "
                 f"Source diversity: {int(rq.get('source_diversity', 0))} | "
                 f"Chunks: {int(rq.get('chunk_count', 0))} | "
@@ -321,7 +395,7 @@ for message in st.session_state.messages:
                     )
             if message.get("abstained"):
                 st.error(message.get("abstain_reason") or "System abstained due to insufficient evidence")
-            with st.expander("Reasoning trace", expanded=False):
+            with st.expander("Agent reasoning trace", expanded=False):
                 _render_trace(message.get("trace", []))
             with st.expander("Citations", expanded=False):
                 _render_citations(message.get("citations", []), key_prefix=f"history-{id(message)}")
@@ -354,29 +428,18 @@ if prompt:
                 status.write("Planner: decomposing intent")
                 start = time.perf_counter()
                 try:
-                    response = _retry_request(
-                        "POST",
-                        BACKEND_URL,
-                        retries=MAX_CHAT_RETRIES,
-                        timeout=CHAT_TIMEOUT_SECONDS,
-                        json={"query": user_text},
-                    )
+                    data, stream_error = _stream_chat(user_text)
+                    if stream_error:
+                        raise RuntimeError(stream_error)
                 except Exception as exc:
                     status.update(label="Workflow failed", state="error", expanded=True)
                     msg = str(exc)
                     err_type = _classify_error(msg)
                     st.session_state.last_error_type = err_type
                     st.error(f"Error type: {err_type}. Details: {msg}")
-                    response = None
+                    data = None
 
-                if response is not None and response.ok:
-                    data, parse_error = _safe_parse_response(response)
-                    if parse_error or data is None:
-                        status.update(label="Workflow failed", state="error", expanded=True)
-                        err_type = _classify_error(parse_error or "invalid_response")
-                        st.session_state.last_error_type = err_type
-                        st.error(f"Error type: {err_type}. Details: {parse_error}")
-                        st.stop()
+                if data is not None:
 
                     answer = str(data.get("answer", ""))
                     citations = data.get("citations", [])
@@ -396,7 +459,16 @@ if prompt:
                     status.update(label=f"Workflow complete ({elapsed_ms/1000:.1f}s)", state="complete", expanded=False)
 
                     st.markdown(answer)
-                    st.metric("Confidence", f"{confidence:.2f}")
+                    if confidence > 0.7:
+                        conf_label = "HIGH"
+                        conf_color = "green"
+                    elif confidence >= 0.4:
+                        conf_label = "MEDIUM"
+                        conf_color = "orange"
+                    else:
+                        conf_label = "LOW"
+                        conf_color = "red"
+                    st.markdown(f"Confidence: :{conf_color}[**{conf_label} ({confidence:.2f})**]")
                     st.caption(f"End-to-end latency: {elapsed_ms:.0f} ms")
                     coverage, invalid_count = _citation_coverage(answer, len(citations))
                     m1, m2 = st.columns(2)
@@ -423,7 +495,7 @@ if prompt:
                             + ", ".join(f"{k}={float(v):.1f}" for k, v in sorted(stage_timings.items()))
                         )
 
-                    with st.expander("Reasoning trace", expanded=False):
+                    with st.expander("Agent reasoning trace", expanded=False):
                         _render_trace(trace)
 
                     with st.expander("Citations", expanded=False):
@@ -451,9 +523,3 @@ if prompt:
                             "stage_timings": stage_timings,
                         }
                     )
-                elif response is not None:
-                    status.update(label="Workflow failed", state="error", expanded=True)
-                    msg = f"Backend error: {response.status_code} {response.text}"
-                    err_type = _classify_error(msg)
-                    st.session_state.last_error_type = err_type
-                    st.error(f"Error type: {err_type}. Details: {msg}")

@@ -152,6 +152,7 @@ Includes:
   - citation precision
   - support coverage
   - abstention precision and recall
+  - adversarial abstain rate
   - per-bucket Hit@k
   - per-difficulty Hit@k
   - citation precision by source type
@@ -163,18 +164,25 @@ Outputs:
 
 ### Measured Profile Metrics (latest run)
 
-Source: `backend/eval/eval_report.json` (dataset size: 20)
+Source: `backend/eval/eval_report.json` (dataset size: 120)
 
 | Metric | Balanced | Low Latency |
 |---|---:|---:|
-| Hit@k | 0.700 | 0.700 |
-| MRR | 0.650 | 0.650 |
-| Citation precision | 0.850 | 0.833 |
-| Support coverage | 0.824 | 0.824 |
-| Abstain precision | 1.000 | 0.500 |
-| Abstain recall | 0.200 | 0.200 |
-| Latency P50 (ms) | 35814.4 | 21554.9 |
-| Latency P95 (ms) | 44514.4 | 24369.6 |
+| Hit@k | 0.733 | 0.725 |
+| MRR | 0.690 | 0.675 |
+| Citation precision | 0.775 | 0.763 |
+| Support coverage | 0.642 | 0.635 |
+| Abstain precision | 1.000 | 0.297* |
+| Abstain recall | 0.967 | 1.000 |
+| Adversarial abstain rate | 1.000 | 1.000 |
+| Latency P50 (ms) | 69102 | 28120 |
+
+*Note: low-latency abstain precision is artificially low due to overlap check bug (Fix 1).
+After Fix 1, low-latency abstain precision is expected to match balanced (>= 0.95).* 
+
+Adversarial bucket demo metric:
+- `adversarial_abstain_rate`: 1.000 (10/10)
+- Per-bucket Hit@k excludes correctly abstained rows (`should_abstain=true` and `abstained=true`) to avoid false negatives.
 
 Hardware + runtime profile used for this run:
 - Python: 3.11.0
@@ -188,10 +196,10 @@ Historical baseline (initial linear MVP without adaptive routing/validator harde
 
 | Metric | Historical Baseline | Current Balanced |
 |---|---:|---:|
-| Hit@k | 0.410 | 0.700 |
-| MRR | 0.290 | 0.650 |
-| Citation precision | 0.520 | 0.850 |
-| Support coverage | 0.460 | 0.824 |
+| Hit@k | 0.410 | 0.733 |
+| MRR | 0.290 | 0.690 |
+| Citation precision | 0.520 | 0.775 |
+| Support coverage | 0.460 | 0.642 |
 
 This shows measurable quality gains after adding adaptive routing, citation validation, and abstention controls.
 

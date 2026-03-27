@@ -1,5 +1,5 @@
 {
-  "run_timestamp": "2026-03-26T17:15:35Z",
+  "run_timestamp": "2026-03-27T05:43:27Z",
   "resource_pack_name": "hackathon_public_pack_v1",
   "resource_pack_path": "backend\\resources\\resource_pack.yaml",
   "processed_urls": [
@@ -8,20 +8,372 @@
     "https://support.atlassian.com/confluence-cloud/docs/manage-public-links-across-confluence-cloud/",
     "https://support.atlassian.com/confluence-cloud/docs/how-secure-are-public-links/",
     "https://confluence.atlassian.com/doc/spaces-139459.html",
+    "https://confluence.atlassian.com/doc/create-and-edit-pages-139459.html",
+    "https://confluence.atlassian.com/doc/use-confluence-cloud-139459.html",
+    "https://confluence.atlassian.com/doc/confluence-user-s-guide-139764.html",
+    "https://confluence.atlassian.com/doc/search-139678.html",
     "https://docs.langchain.com/oss/python/langchain/rag",
     "https://docs.langchain.com/oss/python/langchain/retrieval",
     "https://python.langchain.com/docs/tutorials/rag/",
     "https://python.langchain.com/docs/concepts/",
     "https://python.langchain.com/docs/introduction/",
     "https://www.atlassian.com/software/confluence/demo",
-    "https://www.langchain.com/retrieval"
+    "https://www.langchain.com/retrieval",
+    "https://langchain-ai.github.io/langgraph/concepts/why-langgraph/",
+    "https://langchain-ai.github.io/langgraph/concepts/agentic_concepts/",
+    "https://langchain-ai.github.io/langgraph/concepts/low_level/",
+    "https://docs.langchain.com/oss/python/langchain/overview",
+    "https://ai.google.dev/gemini-api/docs",
+    "https://www.anthropic.com/engineering"
   ],
-  "processed_pdfs": [],
-  "documents_processed": 12,
-  "chunks_added": 97,
-  "skipped_duplicates": 18,
-  "errors": [],
-  "total_duration_seconds": 32.815,
-  "success_count": 12,
-  "failed_count": 0
+  "processed_pdfs": [
+    "https://arxiv.org/pdf/2005.11401.pdf",
+    "https://arxiv.org/pdf/2312.10997.pdf",
+    "https://arxiv.org/pdf/2310.11511.pdf",
+    "https://arxiv.org/pdf/2309.07864.pdf",
+    "https://arxiv.org/pdf/2201.11903.pdf",
+    "https://arxiv.org/pdf/1706.03762.pdf",
+    "https://arxiv.org/pdf/2307.03172.pdf",
+    "https://arxiv.org/pdf/2401.18059.pdf",
+    "https://arxiv.org/pdf/2404.07143.pdf",
+    "https://arxiv.org/pdf/2402.05102.pdf"
+  ],
+  "documents_processed": 32,
+  "chunks_added": 1284,
+  "skipped_duplicates": 30,
+  "errors": [
+    {
+      "source": "https://confluence.atlassian.com/doc/confluence-user-s-guide-139764.html",
+      "error": "404 Client Error: Not Found for url: https://confluence.atlassian.com/doc/confluence-user-s-guide-139764.html"
+    },
+    {
+      "source": "https://confluence.atlassian.com/doc/search-139678.html",
+      "error": "404 Client Error: Not Found for url: https://confluence.atlassian.com/doc/search-139678.html"
+    }
+  ],
+  "total_duration_seconds": 107.006,
+  "success_count": 30,
+  "failed_count": 2,
+  "source_results": [
+    {
+      "source": "https://support.atlassian.com/confluence-cloud/docs/make-a-space-public/",
+      "source_type": "web",
+      "domain": "support.atlassian.com",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 9,
+      "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "https://support.atlassian.com/confluence-cloud/docs/set-up-and-manage-public-links/",
+      "source_type": "web",
+      "domain": "support.atlassian.com",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 13,
+      "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "https://support.atlassian.com/confluence-cloud/docs/manage-public-links-across-confluence-cloud/",
+      "source_type": "web",
+      "domain": "support.atlassian.com",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 15,
+      "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "https://support.atlassian.com/confluence-cloud/docs/how-secure-are-public-links/",
+      "source_type": "web",
+      "domain": "support.atlassian.com",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 25,
+      "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "https://confluence.atlassian.com/doc/spaces-139459.html",
+      "source_type": "web",
+      "domain": "confluence.atlassian.com",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 5,
+      "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "https://confluence.atlassian.com/doc/create-and-edit-pages-139459.html",
+      "source_type": "web",
+      "domain": "confluence.atlassian.com",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 0,
+      "skipped_duplicates": 5,
+      "error": null
+    },
+    {
+      "source": "https://confluence.atlassian.com/doc/use-confluence-cloud-139459.html",
+      "source_type": "web",
+      "domain": "confluence.atlassian.com",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 0,
+      "skipped_duplicates": 5,
+      "error": null
+    },
+    {
+      "source": "https://confluence.atlassian.com/doc/confluence-user-s-guide-139764.html",
+      "source_type": "web",
+      "domain": "confluence.atlassian.com",
+      "status": "failed",
+      "documents_processed": 1,
+      "chunks_added": 0,
+      "skipped_duplicates": 0,
+      "error": "404 Client Error: Not Found for url: https://confluence.atlassian.com/doc/confluence-user-s-guide-139764.html"
+    },
+    {
+      "source": "https://confluence.atlassian.com/doc/search-139678.html",
+      "source_type": "web",
+      "domain": "confluence.atlassian.com",
+      "status": "failed",
+      "documents_processed": 1,
+      "chunks_added": 0,
+      "skipped_duplicates": 0,
+      "error": "404 Client Error: Not Found for url: https://confluence.atlassian.com/doc/search-139678.html"
+    },
+    {
+      "source": "https://docs.langchain.com/oss/python/langchain/rag",
+      "source_type": "web",
+      "domain": "docs.langchain.com",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 14,
+      "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "https://docs.langchain.com/oss/python/langchain/retrieval",
+      "source_type": "web",
+      "domain": "docs.langchain.com",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 6,
+      "skipped_duplicates": 1,
+      "error": null
+    },
+    {
+      "source": "https://python.langchain.com/docs/tutorials/rag/",
+      "source_type": "web",
+      "domain": "python.langchain.com",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 0,
+      "skipped_duplicates": 14,
+      "error": null
+    },
+    {
+      "source": "https://python.langchain.com/docs/concepts/",
+      "source_type": "web",
+      "domain": "python.langchain.com",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 1,
+      "skipped_duplicates": 1,
+      "error": null
+    },
+    {
+      "source": "https://python.langchain.com/docs/introduction/",
+      "source_type": "web",
+      "domain": "python.langchain.com",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 0,
+      "skipped_duplicates": 2,
+      "error": null
+    },
+    {
+      "source": "https://www.atlassian.com/software/confluence/demo",
+      "source_type": "web",
+      "domain": "www.atlassian.com",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 4,
+      "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "https://www.langchain.com/retrieval",
+      "source_type": "web",
+      "domain": "www.langchain.com",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 5,
+      "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "https://langchain-ai.github.io/langgraph/concepts/why-langgraph/",
+      "source_type": "web",
+      "domain": "langchain-ai.github.io",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 0,
+      "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "https://langchain-ai.github.io/langgraph/concepts/agentic_concepts/",
+      "source_type": "web",
+      "domain": "langchain-ai.github.io",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 0,
+      "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "https://langchain-ai.github.io/langgraph/concepts/low_level/",
+      "source_type": "web",
+      "domain": "langchain-ai.github.io",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 0,
+      "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "https://docs.langchain.com/oss/python/langchain/overview",
+      "source_type": "web",
+      "domain": "docs.langchain.com",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 0,
+      "skipped_duplicates": 2,
+      "error": null
+    },
+    {
+      "source": "https://ai.google.dev/gemini-api/docs",
+      "source_type": "web",
+      "domain": "ai.google.dev",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 6,
+      "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "https://www.anthropic.com/engineering",
+      "source_type": "web",
+      "domain": "www.anthropic.com",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 2,
+      "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "https://arxiv.org/pdf/2005.11401.pdf",
+      "source_type": "pdf_url",
+      "domain": "arxiv.org",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 73,
+      "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "https://arxiv.org/pdf/2312.10997.pdf",
+      "source_type": "pdf_url",
+      "domain": "arxiv.org",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 116,
+      "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "https://arxiv.org/pdf/2310.11511.pdf",
+      "source_type": "pdf_url",
+      "domain": "arxiv.org",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 113,
+      "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "https://arxiv.org/pdf/2309.07864.pdf",
+      "source_type": "pdf_url",
+      "domain": "arxiv.org",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 375,
+      "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "https://arxiv.org/pdf/2201.11903.pdf",
+      "source_type": "pdf_url",
+      "domain": "arxiv.org",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 151,
+      "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "https://arxiv.org/pdf/1706.03762.pdf",
+      "source_type": "pdf_url",
+      "domain": "arxiv.org",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 43,
+      "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "https://arxiv.org/pdf/2307.03172.pdf",
+      "source_type": "pdf_url",
+      "domain": "arxiv.org",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 69,
+      "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "https://arxiv.org/pdf/2401.18059.pdf",
+      "source_type": "pdf_url",
+      "domain": "arxiv.org",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 82,
+      "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "https://arxiv.org/pdf/2404.07143.pdf",
+      "source_type": "pdf_url",
+      "domain": "arxiv.org",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 51,
+      "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "https://arxiv.org/pdf/2402.05102.pdf",
+      "source_type": "pdf_url",
+      "domain": "arxiv.org",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 106,
+      "skipped_duplicates": 0,
+      "error": null
+    }
+  ]
 }

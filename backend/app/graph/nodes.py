@@ -1,5 +1,6 @@
 import json
 import re
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from typing import Any
 
@@ -55,8 +56,28 @@ def _unique_queries(lines: list[str]) -> list[str]:
     return out
 
 
+def normalize_query_node(state: NavigatorState) -> NavigatorState:
+    """Lightweight rule-based query normalization prior to planning."""
+    original_query = state.get("original_query", "")
+    query = state.get("query", original_query)
+    normalized = " ".join(str(query).split())
+    normalized = normalized.strip(".,!?")
+    normalized = normalized.lower()
+    abbreviations = {
+        "rag": "retrieval augmented generation",
+        "llm": "large language model",
+        "kb": "knowledge base",
+    }
+    for abbr, expansion in abbreviations.items():
+        normalized = re.sub(rf"\b{re.escape(abbr)}\b", expansion, normalized)
+    state["query"] = normalized or original_query
+    state["original_query"] = original_query
+    _trace(state, "normalize_query", "ok", "Applied rule-based query normalization")
+    return state
+
+
 def planning_agent(state: NavigatorState) -> NavigatorState:
-    query = state["original_query"].strip()
+    query = state.get("query", state["original_query"]).strip()
     if settings.normalized_runtime_profile == "low_latency":
         state["sub_queries"] = [query]
         _trace(state, "planning", "ok", "Low-latency fast path used single query")
@@ -78,7 +99,7 @@ USER QUERY:
             invoke_chat_with_timeout(
                 prompt,
                 purpose="planning",
-                timeout_seconds=min(settings.model_request_timeout_seconds, 8.0),
+                timeout_seconds=settings.effective_model_request_timeout_seconds,
             )
         )
     except ModelInvocationError as exc:
@@ -127,9 +148,10 @@ def adequacy_check_agent(state: NavigatorState) -> NavigatorState:
 
 def reformulation_agent(state: NavigatorState) -> NavigatorState:
     state["retries_used"] += 1
+    active_query = state.get("query", state["original_query"])
     prompt = f"""
 You are the query reformulation agent.
-Initial question: {state['original_query']}
+Initial question: {active_query}
 Current sub-queries:
 {chr(10).join(state['sub_queries'])}
 
@@ -144,7 +166,7 @@ One line per query.
             invoke_chat_with_timeout(
                 prompt,
                 purpose="reformulation",
-                timeout_seconds=min(settings.model_request_timeout_seconds, 8.0),
+                timeout_seconds=settings.effective_model_request_timeout_seconds,
             )
         )
     except ModelInvocationError as exc:
@@ -157,7 +179,7 @@ One line per query.
     return state
 
 
-def _build_citations(chunks: list[dict[str, Any]]) -> list[Citation]:
+def _build_citations(chunks: Sequence[Mapping[str, Any]]) -> list[Citation]:
     citations: list[Citation] = []
     for idx, chunk in enumerate(chunks, start=1):
         metadata = chunk.get("metadata", {})
@@ -192,15 +214,18 @@ CONTEXT:
 Rules:
 1. Grounded only in provided context.
 2. Every factual sentence needs [n] citation.
-3. Return JSON only with keys: answer, cited_indices, confidence, abstain_reason.
-4. {strict_block}
+3. You MUST only cite a source if that specific source's text directly contains the information
+    in the sentence you are writing. Do not cite a source because it is generally relevant.
+    Each citation [n] must be traceable word-for-word to chunk n.
+4. Return JSON only with keys: answer, cited_indices, confidence, abstain_reason.
+5. {strict_block}
 
 USER QUESTION:
 {state['original_query']}
 """
 
 
-def _select_context_chunks(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _select_context_chunks(chunks: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     limit = settings.context_chunk_limit
     char_limit = settings.context_chunk_char_limit
     chosen: list[dict[str, Any]] = []
@@ -250,9 +275,7 @@ def _run_synthesis(state: NavigatorState, strict: bool) -> SynthesisOutput:
     context = "\n\n".join(context_lines)
 
     try:
-        synth_timeout = settings.model_request_timeout_seconds
-        if settings.normalized_runtime_profile == "low_latency":
-            synth_timeout = min(synth_timeout, 12.0)
+        synth_timeout = settings.effective_model_request_timeout_seconds
         raw_text = _message_to_text(
             invoke_chat_with_timeout(
                 _synthesis_prompt(state, context, strict),
@@ -304,7 +327,16 @@ def synthesis_agent(state: NavigatorState) -> NavigatorState:
 
 
 def citation_validation_agent(state: NavigatorState) -> NavigatorState:
-    validation = validate_citations(state["final_response"], len(state["citations"]))
+    citation_snippets = {
+        int(c.get("index", 0)): str(c.get("snippet", ""))
+        for c in state["citations"]
+        if isinstance(c.get("index"), int)
+    }
+    validation = validate_citations(
+        state["final_response"],
+        len(state["citations"]),
+        citation_snippets=citation_snippets,
+    )
     invalid_list = [idx for idx in state["cited_indices"] if idx < 1 or idx > len(state["citations"])]
     if invalid_list:
         validation["valid"] = False
@@ -315,7 +347,8 @@ def citation_validation_agent(state: NavigatorState) -> NavigatorState:
         if (
             settings.normalized_runtime_profile == "low_latency"
             and not quality["adequate"]
-            and state["confidence"] < 0.45
+            and state["confidence"] < 0.25
+            and quality["max_score"] < max(0.25, settings.retrieval_min_score * 0.6)
         ):
             state["abstained"] = True
             state["abstain_reason"] = "Low-confidence answer under weak evidence"
@@ -333,7 +366,11 @@ def citation_validation_agent(state: NavigatorState) -> NavigatorState:
         state["cited_indices"] = strict["cited_indices"]
         state["confidence"] = strict["confidence"]
         state["abstain_reason"] = strict["abstain_reason"]
-        second = validate_citations(state["final_response"], len(state["citations"]))
+        second = validate_citations(
+            state["final_response"],
+            len(state["citations"]),
+            citation_snippets=citation_snippets,
+        )
         if second["valid"]:
             state["validation_errors"] = []
             _trace(state, "citation_validation", "ok", "Passed after one regeneration")

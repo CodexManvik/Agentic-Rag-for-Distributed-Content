@@ -31,8 +31,9 @@ class ModelInvocationError(RuntimeError):
     pass
 
 
-def get_chat_model() -> ChatModel:
+def get_chat_model(max_output_tokens: int | None = None) -> ChatModel:
     _ensure_model_available(settings.ollama_chat_model)
+    resolved_tokens = max_output_tokens or settings.effective_model_max_output_tokens
     ollama_kwargs: dict[str, Any] = {
         "base_url": settings.ollama_base_url,
         "model": settings.ollama_chat_model,
@@ -40,7 +41,7 @@ def get_chat_model() -> ChatModel:
         "top_p": settings.model_top_p,
         "top_k": settings.model_top_k,
         "repeat_penalty": settings.model_repetition_penalty,
-        "num_predict": settings.model_max_output_tokens,
+        "num_predict": resolved_tokens,
         # Additional Ollama decoding controls exposed even if not present in stubs.
         "min_p": settings.model_min_p,
         "presence_penalty": settings.model_presence_penalty,
@@ -63,9 +64,9 @@ def get_chroma_embedding_function() -> EmbeddingFunction[Documents]:
     return ChromaLocalEmbeddingFunction(model)
 
 
-@lru_cache(maxsize=1)
-def get_shared_chat_model() -> ChatModel:
-    return get_chat_model()
+@lru_cache(maxsize=6)
+def get_shared_chat_model(runtime_profile: str, max_output_tokens: int) -> ChatModel:
+    return get_chat_model(max_output_tokens=max_output_tokens)
 
 
 @lru_cache(maxsize=1)
@@ -148,8 +149,10 @@ def _is_model_available(model_name: str, available_models: set[str]) -> bool:
 
 
 def invoke_chat_with_timeout(prompt: str, purpose: str, timeout_seconds: float | None = None) -> Any:
-    timeout = timeout_seconds or settings.model_request_timeout_seconds
-    model = get_shared_chat_model()
+    timeout = timeout_seconds or settings.effective_model_request_timeout_seconds
+    profile = settings.normalized_runtime_profile
+    max_tokens = settings.effective_model_max_output_tokens
+    model = get_shared_chat_model(profile, max_tokens)
 
     try:
         with ThreadPoolExecutor(max_workers=1) as executor:

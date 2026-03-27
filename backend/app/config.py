@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     bm25_cache_enabled: bool = True
     bm25_weight: float = 0.3
     vector_weight: float = 0.7
-    retrieval_min_score: float = 0.40
+    retrieval_min_score: float = 0.42
     retrieval_min_chunks: int = 3
     retrieval_min_source_diversity: int = 2
     retrieval_hard_query_min_score_boost: float = 0.08
@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     retrieval_query_overlap_min: float = 0.15
     retrieval_entity_overlap_min: float = 0.10
     rerank_enabled: bool = True
+    low_latency_skip_overlap_check: bool = False
     debug_trace_enabled: bool = False
     max_retrieval_retries: int = 1
     max_validation_retries: int = 1
@@ -39,8 +40,10 @@ class Settings(BaseSettings):
     model_min_p: float = 0.0
     model_presence_penalty: float = 0.0
     model_repetition_penalty: float = 1.0
-    model_request_timeout_seconds: float = 18.0
-    model_max_output_tokens: int = 180
+    model_request_timeout_seconds: float = 45.0
+    low_latency_model_request_timeout_seconds: float = 25.0
+    model_max_output_tokens: int = 420
+    low_latency_max_output_tokens: int = 300
     model_stop_sequences: str = ""
     fail_fast_on_startup: bool = True
 
@@ -112,6 +115,18 @@ class Settings(BaseSettings):
     @property
     def context_chunk_char_limit(self) -> int:
         return self._runtime_knobs()["context_chunk_char_limit"]
+
+    @property
+    def effective_model_request_timeout_seconds(self) -> float:
+        if self.normalized_runtime_profile == "low_latency":
+            return self.low_latency_model_request_timeout_seconds
+        return self.model_request_timeout_seconds
+
+    @property
+    def effective_model_max_output_tokens(self) -> int:
+        if self.normalized_runtime_profile == "low_latency":
+            return self.low_latency_max_output_tokens
+        return self.model_max_output_tokens
 
 
 settings = Settings()

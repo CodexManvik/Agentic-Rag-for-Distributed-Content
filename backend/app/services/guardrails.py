@@ -34,6 +34,17 @@ class CitationValidationResult(TypedDict):
     error_categories: list[str]
 
 
+def _tokenize_for_overlap(text: str) -> set[str]:
+    return {token for token in re.findall(r"[a-z0-9']+", text.lower()) if len(token) > 2}
+
+
+def citation_semantically_valid(claim_sentence: str, cited_chunk_text: str) -> bool:
+    claim_tokens = _tokenize_for_overlap(claim_sentence)
+    chunk_tokens = _tokenize_for_overlap(cited_chunk_text)
+    overlap = len(claim_tokens & chunk_tokens) / max(len(claim_tokens), 1)
+    return overlap >= 0.12
+
+
 def _split_units(answer: str) -> list[str]:
     units: list[str] = []
     for line in answer.splitlines():
@@ -72,7 +83,7 @@ def _should_require_citation(unit: str) -> bool:
     return has_signal
 
 
-def validate_citations(answer: str, citation_count: int) -> CitationValidationResult:
+def validate_citations(answer: str, citation_count: int, citation_snippets: dict[int, str] | None = None) -> CitationValidationResult:
     stripped = answer.strip()
     if not stripped:
         return {
@@ -96,6 +107,17 @@ def validate_citations(answer: str, citation_count: int) -> CitationValidationRe
         if not matches:
             categories.add("missing_citation")
             errors.append(f"missing_citation: {sentence[:80]}")
+            continue
+
+        if citation_snippets:
+            for raw_idx in matches:
+                idx = int(raw_idx)
+                chunk_text = citation_snippets.get(idx, "")
+                if not chunk_text:
+                    continue
+                if not citation_semantically_valid(sentence, chunk_text):
+                    categories.add("weak_semantic_citation")
+                    errors.append(f"weak_semantic_citation: sentence='{sentence[:60]}' index={idx}")
 
     all_indices = [int(idx) for idx in CITATION_PATTERN.findall(stripped)]
     invalid = sorted({idx for idx in all_indices if idx < 1 or idx > citation_count})

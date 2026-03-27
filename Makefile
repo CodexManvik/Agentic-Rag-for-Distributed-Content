@@ -35,7 +35,7 @@ eval-matrix-check:
 	python backend/eval/check_matrix_coverage.py --dataset backend/eval/dataset_dev.jsonl --target backend/eval/eval_matrix_target.json
 
 demo-prewarm:
-	python backend/scripts/prewarm_demo.py
+	python backend/scripts/prewarm_demo.py --queries 3
 
 demo-cache:
 	python backend/scripts/build_demo_cache.py --backend-url http://localhost:8000/chat --output backend/resources/demo_cached_answers.json

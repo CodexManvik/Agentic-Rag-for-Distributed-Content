@@ -2,6 +2,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from hashlib import sha256
 from typing import Any, TypedDict, cast
+from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -84,6 +85,13 @@ def _extract_web_sections(url: str, html: str) -> tuple[str, list[tuple[str, str
     return title, sections
 
 
+def _classify_web_source_type(url: str) -> str:
+    host = urlparse(url).netloc.lower()
+    if host == "confluence.atlassian.com":
+        return "confluence"
+    return "web"
+
+
 def ingest_web_page(url: str) -> IngestionStats:
     _ensure_allowed_domain(url)
     stats: IngestionStats = {
@@ -98,6 +106,7 @@ def ingest_web_page(url: str) -> IngestionStats:
         response = requests.get(url, timeout=20)
         response.raise_for_status()
         title, sections = _extract_web_sections(url, response.text)
+        source_type = _classify_web_source_type(url)
         hashes = _existing_hashes()
 
         ids: list[str] = []
@@ -116,7 +125,7 @@ def ingest_web_page(url: str) -> IngestionStats:
                     Metadata,
                     {
                         "source": title,
-                        "source_type": "web",
+                        "source_type": source_type,
                         "title": title,
                         "section": heading,
                         "url": url,

@@ -47,6 +47,7 @@ class SynthesisOutput(TypedDict):
 
 
 class NavigatorState(TypedDict):
+    query: str
     original_query: str
     sub_queries: list[str]
     retrieved_chunks: list[RetrievedChunk]
@@ -63,3 +64,4 @@ class NavigatorState(TypedDict):
     synthesis_output: SynthesisOutput
     trace: list[TraceEvent]
     stage_timings: dict[str, float]
+    stage_timestamps: dict[str, dict[str, Any]]

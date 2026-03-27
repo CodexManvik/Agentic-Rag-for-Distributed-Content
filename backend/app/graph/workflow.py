@@ -1,4 +1,7 @@
 import time
+import json
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Callable
 
 from langgraph.graph import END, StateGraph
@@ -9,6 +12,7 @@ from app.graph.nodes import (
     adequacy_check_agent,
     citation_validation_agent,
     finalize_node,
+    normalize_query_node,
     planning_agent,
     reformulation_agent,
     retrieval_agent,
@@ -19,12 +23,21 @@ from app.graph.state import NavigatorState
 
 def _timed_node(name: str, fn: Callable[[NavigatorState], NavigatorState]) -> Callable[[NavigatorState], NavigatorState]:
     def wrapped(state: NavigatorState) -> NavigatorState:
+        started_at = datetime.now(timezone.utc).isoformat()
         start = time.perf_counter()
         out = fn(state)
         elapsed_ms = (time.perf_counter() - start) * 1000
+        finished_at = datetime.now(timezone.utc).isoformat()
         timings = out.get("stage_timings", {})
         timings[name] = round(float(timings.get(name, 0.0)) + elapsed_ms, 2)
         out["stage_timings"] = timings
+        timestamps = out.get("stage_timestamps", {})
+        timestamps[name] = {
+            "started_at": started_at,
+            "finished_at": finished_at,
+            "duration_ms": round(elapsed_ms, 2),
+        }
+        out["stage_timestamps"] = timestamps
         if out.get("trace"):
             last = out["trace"][-1]
             if last.get("node") == name:
@@ -42,6 +55,12 @@ def _route_after_adequacy(state: NavigatorState) -> str:
     if quality["adequate"]:
         return "synthesis"
 
+    moderate_support = (
+        quality["max_score"] >= max(0.30, settings.retrieval_min_score * 0.75)
+        and quality["chunk_count"] >= max(2, settings.retrieval_min_chunks - 1)
+        and quality["source_diversity"] >= 1
+    )
+
     if settings.normalized_runtime_profile == "low_latency":
         very_weak = (
             quality["max_score"] < max(0.20, settings.retrieval_min_score * 0.6)
@@ -49,7 +68,10 @@ def _route_after_adequacy(state: NavigatorState) -> str:
             or quality["source_diversity"] == 0
         )
         if not very_weak:
-            return "abstain"
+            return "synthesis"
+
+    if moderate_support and state["retries_used"] >= settings.max_retrieval_retries:
+        return "synthesis"
 
     if state["retries_used"] < settings.max_retrieval_retries:
         return "reformulation"
@@ -62,6 +84,7 @@ def _route_after_validation(state: NavigatorState) -> str:
 
 def build_graph():
     graph = StateGraph(NavigatorState)
+    graph.add_node("normalize_query", _timed_node("normalize_query", normalize_query_node))
     graph.add_node("planning", _timed_node("planning", planning_agent))
     graph.add_node("retrieval", _timed_node("retrieval", retrieval_agent))
     graph.add_node("adequacy", _timed_node("adequacy", adequacy_check_agent))
@@ -71,7 +94,8 @@ def build_graph():
     graph.add_node("abstain", _timed_node("abstain", abstain_node))
     graph.add_node("finalize", _timed_node("finalize", finalize_node))
 
-    graph.set_entry_point("planning")
+    graph.set_entry_point("normalize_query")
+    graph.add_edge("normalize_query", "planning")
     graph.add_edge("planning", "retrieval")
     graph.add_edge("retrieval", "adequacy")
     graph.add_conditional_edges(
@@ -101,8 +125,25 @@ def build_graph():
 workflow = build_graph()
 
 
+def _append_stage_latency_log(query: str, state: NavigatorState) -> None:
+    resources_dir = Path(__file__).resolve().parents[2] / "resources"
+    resources_dir.mkdir(parents=True, exist_ok=True)
+    log_path = resources_dir / "stage_latency.jsonl"
+    payload = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "query": query,
+        "profile": settings.normalized_runtime_profile,
+        "abstained": bool(state.get("abstained", False)),
+        "stage_timings": state.get("stage_timings", {}),
+        "stage_timestamps": state.get("stage_timestamps", {}),
+    }
+    with log_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(payload, ensure_ascii=True) + "\n")
+
+
 def run_workflow(query: str) -> NavigatorState:
     initial_state: NavigatorState = {
+        "query": query,
         "original_query": query,
         "sub_queries": [],
         "retrieved_chunks": [],
@@ -131,5 +172,8 @@ def run_workflow(query: str) -> NavigatorState:
         },
         "trace": [],
         "stage_timings": {},
+        "stage_timestamps": {},
     }
-    return workflow.invoke(initial_state)
+    result = workflow.invoke(initial_state)
+    _append_stage_latency_log(query, result)
+    return result
