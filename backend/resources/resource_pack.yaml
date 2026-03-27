@@ -35,13 +35,14 @@ pdf_urls:
   - https://arxiv.org/pdf/2401.18059.pdf
   - https://arxiv.org/pdf/2404.07143.pdf
   - https://arxiv.org/pdf/2402.05102.pdf
-pdf_paths: []
+pdf_paths:
+  - ../../Hackathon_Problem_Statement_SmartKnowledgeNavigator.docx.pdf
 doc_paths:
   - ../../README.md
   - architecture_notes.md
 ingestion_profile:
-  chunk_size: 1200
-  chunk_overlap: 200
+  chunk_size: 400
+  chunk_overlap: 50
   retrieval_top_k: 4
   retrieval_per_query_k: 4
   retrieval_bm25_k: 6

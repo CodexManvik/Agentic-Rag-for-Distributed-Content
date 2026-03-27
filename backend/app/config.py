@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
-    ollama_chat_model: str = "qwen3.5:0.8b"
+    ollama_chat_model: str = "qwen3.5:2b"
     ollama_embedding_model: str = "nomic-embed-text:latest"
 
     chroma_collection_name: str = "knowledge_base"
@@ -18,9 +18,9 @@ class Settings(BaseSettings):
     bm25_cache_enabled: bool = True
     bm25_weight: float = 0.3
     vector_weight: float = 0.7
-    retrieval_min_score: float = 0.42
-    retrieval_min_chunks: int = 3
-    retrieval_min_source_diversity: int = 2
+    retrieval_min_score: float = 0.28
+    retrieval_min_chunks: int = 2
+    retrieval_min_source_diversity: int = 1
     retrieval_hard_query_min_score_boost: float = 0.08
     retrieval_hard_query_min_source_diversity: int = 3
     retrieval_query_overlap_min: float = 0.15
@@ -48,8 +48,8 @@ class Settings(BaseSettings):
     model_repetition_penalty: float = 1.0
     model_request_timeout_seconds: float = 45.0
     low_latency_model_request_timeout_seconds: float = 25.0
-    model_max_output_tokens: int = 420
-    low_latency_max_output_tokens: int = 300
+    model_max_output_tokens: int = 800
+    low_latency_max_output_tokens: int = 512
     planner_request_timeout_seconds: float = 12.0
     low_latency_planner_request_timeout_seconds: float = 6.0
     planner_max_output_tokens: int = 96
@@ -58,10 +58,10 @@ class Settings(BaseSettings):
     low_latency_reformulation_request_timeout_seconds: float = 6.0
     reformulation_max_output_tokens: int = 96
     low_latency_reformulation_max_output_tokens: int = 64
-    synthesis_request_timeout_seconds: float = 40.0
-    low_latency_synthesis_request_timeout_seconds: float = 12.0
-    synthesis_max_output_tokens: int = 320
-    low_latency_synthesis_max_output_tokens: int = 120
+    synthesis_request_timeout_seconds: float = 90.0
+    low_latency_synthesis_request_timeout_seconds: float = 45.0
+    synthesis_max_output_tokens: int = 700
+    low_latency_synthesis_max_output_tokens: int = 400
     model_stop_sequences: str = ""
     fail_fast_on_startup: bool = True
 
@@ -73,7 +73,12 @@ class Settings(BaseSettings):
     )
     public_sources_only: bool = True
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        # Resolve .env relative to the repo root (two levels above this file),
+        # regardless of the working directory uvicorn is started from.
+        env_file=str(Path(__file__).resolve().parents[2] / ".env"),
+        env_file_encoding="utf-8",
+    )
 
     @cached_property
     def allowed_domains(self) -> list[str]:

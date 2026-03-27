@@ -4,6 +4,7 @@ from typing import Any, Protocol, cast
 
 import requests
 from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 
 from app.config import settings
@@ -42,12 +43,51 @@ def get_chat_model(max_output_tokens: int | None = None) -> ChatModel:
         "top_k": settings.model_top_k,
         "repeat_penalty": settings.model_repetition_penalty,
         "num_predict": resolved_tokens,
-        # Additional Ollama decoding controls exposed even if not present in stubs.
-        "min_p": settings.model_min_p,
-        "presence_penalty": settings.model_presence_penalty,
     }
     model = ChatOllama(**ollama_kwargs)
     return cast(ChatModel, model)
+
+
+def invoke_synthesis(
+    prompt: str,
+    timeout_seconds: float,
+    max_output_tokens: int,
+) -> str:
+    """Invoke the chat model for synthesis using native Ollama HTTP API.
+
+    Uses /no_think directive and the raw Ollama REST endpoint directly
+    to avoid LangChain ChatOllama's content/thinking field splitting
+    that causes qwen3.5 thinking models to return empty .content strings.
+    """
+    url = f"{settings.ollama_base_url.rstrip('/')}/api/chat"
+    payload = {
+        "model": settings.ollama_chat_model,
+        "messages": [
+            {"role": "system", "content": "/no_think"},
+            {"role": "user", "content": prompt},
+        ],
+        "stream": False,
+        "options": {
+            "temperature": settings.model_temperature,
+            "top_p": settings.model_top_p,
+            "top_k": settings.model_top_k,
+            "repeat_penalty": settings.model_repetition_penalty,
+            "num_predict": max_output_tokens,
+        },
+    }
+    try:
+        response = requests.post(url, json=payload, timeout=timeout_seconds)
+        response.raise_for_status()
+        data = response.json()
+        return str(data.get("message", {}).get("content", "")).strip()
+    except requests.Timeout as exc:
+        raise ModelInvocationError(
+            f"Timed out during synthesis after {timeout_seconds:.1f}s"
+        ) from exc
+    except Exception as exc:
+        raise ModelInvocationError(
+            f"Model invocation failed during synthesis: {exc}"
+        ) from exc
 
 
 def get_embedding_model() -> EmbeddingModel:
@@ -149,7 +189,7 @@ def _is_model_available(model_name: str, available_models: set[str]) -> bool:
 
 
 def invoke_chat_with_timeout(
-    prompt: str,
+    prompt: str | list[Any],
     purpose: str,
     timeout_seconds: float | None = None,
     max_output_tokens: int | None = None,
