@@ -1,4 +1,5 @@
 from functools import cached_property
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -24,6 +25,11 @@ class Settings(BaseSettings):
     retrieval_hard_query_min_source_diversity: int = 3
     retrieval_query_overlap_min: float = 0.15
     retrieval_entity_overlap_min: float = 0.10
+    retrieval_chunk_min_term_overlap: int = 1
+    retrieval_workflow_chunk_min_term_overlap: int = 2
+    retrieval_pdf_penalty_for_workflow: float = 0.55
+    retrieval_workflow_source_boost: float = 1.35
+    retrieval_langgraph_source_boost: float = 1.2
     rerank_enabled: bool = True
     low_latency_skip_overlap_check: bool = False
     debug_trace_enabled: bool = False
@@ -44,6 +50,18 @@ class Settings(BaseSettings):
     low_latency_model_request_timeout_seconds: float = 25.0
     model_max_output_tokens: int = 420
     low_latency_max_output_tokens: int = 300
+    planner_request_timeout_seconds: float = 12.0
+    low_latency_planner_request_timeout_seconds: float = 6.0
+    planner_max_output_tokens: int = 96
+    low_latency_planner_max_output_tokens: int = 64
+    reformulation_request_timeout_seconds: float = 12.0
+    low_latency_reformulation_request_timeout_seconds: float = 6.0
+    reformulation_max_output_tokens: int = 96
+    low_latency_reformulation_max_output_tokens: int = 64
+    synthesis_request_timeout_seconds: float = 40.0
+    low_latency_synthesis_request_timeout_seconds: float = 12.0
+    synthesis_max_output_tokens: int = 320
+    low_latency_synthesis_max_output_tokens: int = 120
     model_stop_sequences: str = ""
     fail_fast_on_startup: bool = True
 
@@ -127,6 +145,50 @@ class Settings(BaseSettings):
         if self.normalized_runtime_profile == "low_latency":
             return self.low_latency_max_output_tokens
         return self.model_max_output_tokens
+
+    @property
+    def effective_planner_request_timeout_seconds(self) -> float:
+        if self.normalized_runtime_profile == "low_latency":
+            return self.low_latency_planner_request_timeout_seconds
+        return self.planner_request_timeout_seconds
+
+    @property
+    def effective_planner_max_output_tokens(self) -> int:
+        if self.normalized_runtime_profile == "low_latency":
+            return self.low_latency_planner_max_output_tokens
+        return self.planner_max_output_tokens
+
+    @property
+    def effective_reformulation_request_timeout_seconds(self) -> float:
+        if self.normalized_runtime_profile == "low_latency":
+            return self.low_latency_reformulation_request_timeout_seconds
+        return self.reformulation_request_timeout_seconds
+
+    @property
+    def effective_reformulation_max_output_tokens(self) -> int:
+        if self.normalized_runtime_profile == "low_latency":
+            return self.low_latency_reformulation_max_output_tokens
+        return self.reformulation_max_output_tokens
+
+    @property
+    def effective_synthesis_request_timeout_seconds(self) -> float:
+        if self.normalized_runtime_profile == "low_latency":
+            return self.low_latency_synthesis_request_timeout_seconds
+        return self.synthesis_request_timeout_seconds
+
+    @property
+    def effective_synthesis_max_output_tokens(self) -> int:
+        if self.normalized_runtime_profile == "low_latency":
+            return self.low_latency_synthesis_max_output_tokens
+        return self.synthesis_max_output_tokens
+
+    @property
+    def resolved_chroma_persist_directory(self) -> str:
+        configured = Path(self.chroma_persist_directory)
+        if configured.is_absolute():
+            return str(configured)
+        repo_root = Path(__file__).resolve().parents[2]
+        return str((repo_root / configured).resolve())
 
 
 settings = Settings()

@@ -2,7 +2,7 @@ import time
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Callable, cast
 
 from langgraph.graph import END, StateGraph
 
@@ -12,6 +12,7 @@ from app.graph.nodes import (
     adequacy_check_agent,
     citation_validation_agent,
     finalize_node,
+    is_fallback_abstain_answer,
     normalize_query_node,
     planning_agent,
     reformulation_agent,
@@ -31,12 +32,36 @@ def _timed_node(name: str, fn: Callable[[NavigatorState], NavigatorState]) -> Ca
         timings = out.get("stage_timings", {})
         timings[name] = round(float(timings.get(name, 0.0)) + elapsed_ms, 2)
         out["stage_timings"] = timings
-        timestamps = out.get("stage_timestamps", {})
-        timestamps[name] = {
+        attempt = {
             "started_at": started_at,
             "finished_at": finished_at,
             "duration_ms": round(elapsed_ms, 2),
         }
+        timestamps = out.get("stage_timestamps", {})
+        previous = timestamps.get(name)
+        if isinstance(previous, dict):
+            attempts = previous.get("attempts", [])
+            if not isinstance(attempts, list):
+                attempts = []
+            attempts.append(attempt)
+            total_duration = round(sum(float(a.get("duration_ms", 0.0)) for a in attempts), 2)
+            timestamps[name] = {
+                "started_at": previous.get("started_at", started_at),
+                "finished_at": finished_at,
+                "duration_ms": total_duration,
+                "attempt_count": len(attempts),
+                "last_attempt_duration_ms": attempt["duration_ms"],
+                "attempts": attempts,
+            }
+        else:
+            timestamps[name] = {
+                "started_at": started_at,
+                "finished_at": finished_at,
+                "duration_ms": attempt["duration_ms"],
+                "attempt_count": 1,
+                "last_attempt_duration_ms": attempt["duration_ms"],
+                "attempts": [attempt],
+            }
         out["stage_timestamps"] = timestamps
         if out.get("trace"):
             last = out["trace"][-1]
@@ -52,6 +77,10 @@ def _route_after_adequacy(state: NavigatorState) -> str:
         return "abstain"
 
     quality = state["retrieval_quality"]
+    weak_topical = "weak topical match" in str(quality.get("reason", "")).lower()
+    if weak_topical and state["retries_used"] < settings.max_retrieval_retries:
+        return "reformulation"
+
     if quality["adequate"]:
         return "synthesis"
 
@@ -61,17 +90,16 @@ def _route_after_adequacy(state: NavigatorState) -> str:
         and quality["source_diversity"] >= 1
     )
 
+    if moderate_support:
+        return "synthesis"
+
     if settings.normalized_runtime_profile == "low_latency":
         very_weak = (
             quality["max_score"] < max(0.20, settings.retrieval_min_score * 0.6)
             or quality["chunk_count"] <= 1
             or quality["source_diversity"] == 0
         )
-        if not very_weak:
-            return "synthesis"
-
-    if moderate_support and state["retries_used"] >= settings.max_retrieval_retries:
-        return "synthesis"
+        return "abstain" if very_weak else "synthesis"
 
     if state["retries_used"] < settings.max_retrieval_retries:
         return "reformulation"
@@ -129,11 +157,40 @@ def _append_stage_latency_log(query: str, state: NavigatorState) -> None:
     resources_dir = Path(__file__).resolve().parents[2] / "resources"
     resources_dir.mkdir(parents=True, exist_ok=True)
     log_path = resources_dir / "stage_latency.jsonl"
+    retrieval_quality = state.get("retrieval_quality", {})
+    synthesis_output = state.get("synthesis_output", {})
+    synthesis_answer = str(synthesis_output.get("answer", ""))
+    synthesis_abstained = bool(synthesis_output.get("abstain_reason")) or is_fallback_abstain_answer(synthesis_answer)
+    answer_prefix = synthesis_answer.replace("\n", " ").strip()[:120]
+    chunks = state.get("retrieved_chunks", [])
+    top_chunks = []
+    for chunk in chunks[:5]:
+        metadata = chunk.get("metadata", {})
+        top_chunks.append(
+            {
+                "source": chunk.get("source"),
+                "url": metadata.get("url") or metadata.get("path"),
+                "title": metadata.get("title") or chunk.get("source"),
+                "score": round(float(chunk.get("score", 0.0)), 4),
+            }
+        )
     payload = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "query": query,
         "profile": settings.normalized_runtime_profile,
         "abstained": bool(state.get("abstained", False)),
+        "policy_blocked": str(retrieval_quality.get("reason", "")) == "Policy scope violation",
+        "chunk_count": int(retrieval_quality.get("chunk_count", 0)),
+        "adequate": bool(retrieval_quality.get("adequate", False)),
+        "synthesis": {
+            "abstained": synthesis_abstained,
+            "answer_prefix": answer_prefix,
+        },
+        "final": {
+            "abstained": bool(state.get("abstained", False)),
+        },
+        "sub_queries": state.get("sub_queries", []),
+        "top_chunks": top_chunks,
         "stage_timings": state.get("stage_timings", {}),
         "stage_timestamps": state.get("stage_timestamps", {}),
     }
@@ -174,6 +231,6 @@ def run_workflow(query: str) -> NavigatorState:
         "stage_timings": {},
         "stage_timestamps": {},
     }
-    result = workflow.invoke(initial_state)
+    result: NavigatorState = workflow.invoke(initial_state)  # type: ignore[assignment]
     _append_stage_latency_log(query, result)
     return result

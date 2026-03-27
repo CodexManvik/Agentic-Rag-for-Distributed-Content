@@ -189,6 +189,7 @@ def _render_citations(citations: list[dict[str, Any]], key_prefix: str) -> None:
         section = citation.get("section") or "n/a"
         page = citation.get("page_number")
         citation_index = citation.get("index", idx)
+
         badge_label = {
             "confluence": "Confluence",
             "pdf": "PDF",
@@ -199,13 +200,15 @@ def _render_citations(citations: list[dict[str, Any]], key_prefix: str) -> None:
             "pdf": "red",
             "web": "green",
         }.get(source_type, "gray")
+
         st.markdown(f"[{citation_index}] :{badge_color}[{badge_label}] {source}")
         st.caption(f"Type: {source_type} | Section: {section} | Page: {page if page else 'n/a'}")
         if url:
-            st.link_button("Open source", url, key=f"{key_prefix}-cite-{idx}")
+            st.link_button("Open source", url)
+
         if snippet:
-            with st.expander("Snippet", expanded=False):
-                st.write(snippet)
+            st.caption("Snippet:")
+            st.write(snippet)
 
 
 def _stream_chat(query: str) -> tuple[dict[str, Any] | None, str | None]:
@@ -405,9 +408,9 @@ for message in st.session_state.messages:
                         continue
                     claims = _extract_claims_for_index(str(message.get("content", "")), index)
                     if claims:
-                        with st.expander(f"Claim alignment for [{index}]", expanded=False):
-                            for claim in claims:
-                                st.write(f"- {claim}")
+                        st.markdown(f"Claim alignment for [{index}]")
+                        for claim in claims:
+                            st.write(f"- {claim}")
 
 prompt = st.chat_input("Ask a question", key="chat_box")
 if not prompt and st.session_state.prefill:
@@ -454,7 +457,7 @@ if prompt:
                     st.session_state.last_error_type = "none"
 
                     status.write("Retriever: evidence fetched")
-                    status.write("Synthesis: answer grounded in citations")
+                    status.write("Synthesis: response generated")
                     status.write("Validator: citation checks complete")
                     status.update(label=f"Workflow complete ({elapsed_ms/1000:.1f}s)", state="complete", expanded=False)
 
@@ -495,20 +498,20 @@ if prompt:
                             + ", ".join(f"{k}={float(v):.1f}" for k, v in sorted(stage_timings.items()))
                         )
 
-                    with st.expander("Agent reasoning trace", expanded=False):
-                        _render_trace(trace)
+                    st.markdown("**Agent reasoning trace**")
+                    _render_trace(trace)
 
-                    with st.expander("Citations", expanded=False):
-                        _render_citations(citations, key_prefix=f"live-{len(st.session_state.messages)}")
-                        for c in citations:
-                            index = int(c.get("index", 0) or 0)
-                            if index <= 0:
-                                continue
-                            claims = _extract_claims_for_index(answer, index)
-                            if claims:
-                                with st.expander(f"Claim alignment for [{index}]", expanded=False):
-                                    for claim in claims:
-                                        st.write(f"- {claim}")
+                    st.markdown("**Citations**")
+                    _render_citations(citations, key_prefix=f"live-{len(st.session_state.messages)}")
+                    for c in citations:
+                        index = int(c.get("index", 0) or 0)
+                        if index <= 0:
+                            continue
+                        claims = _extract_claims_for_index(answer, index)
+                        if claims:
+                            st.markdown(f"Claim alignment for [{index}]")
+                            for claim in claims:
+                                st.write(f"- {claim}")
 
                     st.session_state.messages.append(
                         {

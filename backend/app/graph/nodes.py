@@ -12,6 +12,23 @@ from app.services.llm import ModelInvocationError, invoke_chat_with_timeout
 from app.services.vector_store import assess_retrieval_adequacy, query_chunks
 
 
+FALLBACK_ABSTAIN_TEXT = "I do not have sufficient information in the retrieved documents to answer this query."
+
+
+def is_fallback_abstain_answer(answer: str) -> bool:
+    return answer.strip().lower() == FALLBACK_ABSTAIN_TEXT.lower()
+
+
+def _policy_blocked(state: NavigatorState) -> bool:
+    quality = state.get("retrieval_quality", {})
+    return str(quality.get("reason", "")) == "Policy scope violation"
+
+
+def _no_evidence(state: NavigatorState) -> bool:
+    quality = state.get("retrieval_quality", {})
+    return len(state.get("retrieved_chunks", [])) == 0 or int(quality.get("chunk_count", 0)) == 0
+
+
 def _message_to_text(message: Any) -> str:
     if isinstance(message, str):
         return message
@@ -99,7 +116,8 @@ USER QUERY:
             invoke_chat_with_timeout(
                 prompt,
                 purpose="planning",
-                timeout_seconds=settings.effective_model_request_timeout_seconds,
+                timeout_seconds=settings.effective_planner_request_timeout_seconds,
+                max_output_tokens=settings.effective_planner_max_output_tokens,
             )
         )
     except ModelInvocationError as exc:
@@ -166,7 +184,8 @@ One line per query.
             invoke_chat_with_timeout(
                 prompt,
                 purpose="reformulation",
-                timeout_seconds=settings.effective_model_request_timeout_seconds,
+                timeout_seconds=settings.effective_reformulation_request_timeout_seconds,
+                max_output_tokens=settings.effective_reformulation_max_output_tokens,
             )
         )
     except ModelInvocationError as exc:
@@ -204,9 +223,12 @@ def _extract_json(text: str) -> str:
 
 def _synthesis_prompt(state: NavigatorState, context: str, strict: bool) -> str:
     strict_block = "" if not strict else "Each factual sentence must include [n] citations."
+    low_latency_block = ""
+    if settings.normalized_runtime_profile == "low_latency":
+        low_latency_block = "Answer format must be 3-5 concise bullet points."
     return f"""
 You are a grounded synthesis agent.
-Use only the context below. If evidence is insufficient, abstain.
+Use only the context below.
 
 CONTEXT:
 {context}
@@ -217,8 +239,15 @@ Rules:
 3. You MUST only cite a source if that specific source's text directly contains the information
     in the sentence you are writing. Do not cite a source because it is generally relevant.
     Each citation [n] must be traceable word-for-word to chunk n.
-4. Return JSON only with keys: answer, cited_indices, confidence, abstain_reason.
-5. {strict_block}
+4. If evidence is adequate and citations exist, produce a concise grounded answer.
+5. Abstain only when one of these is true:
+    - policy violation
+    - no relevant evidence
+    - unresolved evidence contradiction
+6. Never output the exact fallback sentence unless abstain_reason is explicit.
+7. Return JSON only with keys: answer, cited_indices, confidence, abstain_reason.
+8. {strict_block}
+9. {low_latency_block}
 
 USER QUESTION:
 {state['original_query']}
@@ -261,7 +290,7 @@ def _run_synthesis(state: NavigatorState, strict: bool) -> SynthesisOutput:
     chunks = _select_context_chunks(state["retrieved_chunks"])
     if not chunks:
         return {
-            "answer": "I do not have sufficient information in the retrieved documents to answer this query.",
+            "answer": FALLBACK_ABSTAIN_TEXT,
             "cited_indices": [],
             "confidence": 0.0,
             "abstain_reason": "No evidence retrieved",
@@ -275,17 +304,18 @@ def _run_synthesis(state: NavigatorState, strict: bool) -> SynthesisOutput:
     context = "\n\n".join(context_lines)
 
     try:
-        synth_timeout = settings.effective_model_request_timeout_seconds
+        synth_timeout = settings.effective_synthesis_request_timeout_seconds
         raw_text = _message_to_text(
             invoke_chat_with_timeout(
                 _synthesis_prompt(state, context, strict),
                 purpose="synthesis",
                 timeout_seconds=synth_timeout,
+                max_output_tokens=settings.effective_synthesis_max_output_tokens,
             )
         ).strip()
     except ModelInvocationError:
         return {
-            "answer": "I do not have sufficient information in the retrieved documents to answer this query.",
+            "answer": FALLBACK_ABSTAIN_TEXT,
             "cited_indices": [],
             "confidence": 0.0,
             "abstain_reason": "Model unavailable during synthesis",
@@ -306,7 +336,7 @@ def _run_synthesis(state: NavigatorState, strict: bool) -> SynthesisOutput:
         }
     except Exception:
         return {
-            "answer": "I do not have sufficient information in the retrieved documents to answer this query.",
+            "answer": FALLBACK_ABSTAIN_TEXT,
             "cited_indices": [],
             "confidence": 0.0,
             "abstain_reason": "Invalid synthesis JSON",
@@ -317,12 +347,51 @@ def synthesis_agent(state: NavigatorState) -> NavigatorState:
     selected = _select_context_chunks(state["retrieved_chunks"])
     state["citations"] = _build_citations(selected)
     synth = _run_synthesis(state, strict=False)
+
+    # Enforce output contract: a non-abstained synthesis must not return the fallback template.
+    if is_fallback_abstain_answer(str(synth.get("answer", ""))) and not synth.get("abstain_reason"):
+        retry = _run_synthesis(state, strict=True)
+        if retry.get("answer") and not is_fallback_abstain_answer(str(retry.get("answer", ""))):
+            synth = retry
+            _trace(state, "synthesis", "ok", "Recovered from abstain-template contract violation")
+        else:
+            synth = retry
+            synth["abstain_reason"] = str(
+                synth.get("abstain_reason") or "Synthesis produced abstain template without abstain reason"
+            )
+
+    # Keep abstain language mutually exclusive under adequate cited evidence.
+    if (
+        state.get("retrieval_quality", {}).get("adequate", False)
+        and len(state["citations"]) > 0
+        and is_fallback_abstain_answer(str(synth.get("answer", "")))
+        and not _policy_blocked(state)
+        and not _no_evidence(state)
+    ):
+        retry = _run_synthesis(state, strict=True)
+        if retry.get("answer") and not is_fallback_abstain_answer(str(retry.get("answer", ""))):
+            synth = retry
+            _trace(state, "synthesis", "ok", "Recovered grounded answer under adequate evidence")
+        else:
+            synth = retry
+            synth["abstain_reason"] = "Contradiction: adequate evidence present but synthesis abstained"
+            state["validation_errors"].append(
+                "synthesis_contradiction:adequate_with_citations_and_abstain_template"
+            )
+
     state["synthesis_output"] = synth
     state["final_response"] = synth["answer"]
     state["cited_indices"] = synth["cited_indices"]
     state["confidence"] = synth["confidence"]
     state["abstain_reason"] = synth["abstain_reason"]
-    _trace(state, "synthesis", "ok", "Generated structured synthesis")
+    state["abstained"] = bool(synth.get("abstain_reason")) or is_fallback_abstain_answer(state["final_response"])
+
+    if state["abstain_reason"] == "Model unavailable during synthesis":
+        _trace(state, "synthesis", "failed", "Model unavailable during synthesis")
+    elif state["abstained"]:
+        _trace(state, "synthesis", "failed", str(state["abstain_reason"] or "Synthesis abstained"))
+    else:
+        _trace(state, "synthesis", "ok", "Generated structured synthesis")
     return state
 
 
@@ -343,6 +412,18 @@ def citation_validation_agent(state: NavigatorState) -> NavigatorState:
         validation["errors"].append(f"Structured cited_indices out of range: {invalid_list}")
 
     if validation["valid"]:
+        if (
+            len(state["citations"]) > 0
+            and state["retrieval_quality"]["adequate"]
+            and is_fallback_abstain_answer(state["final_response"])
+            and not _policy_blocked(state)
+            and not _no_evidence(state)
+        ):
+            state["abstained"] = True
+            state["abstain_reason"] = "Contradiction: abstain template blocked under adequate evidence"
+            state["validation_errors"].append("abstain_template_blocked_under_adequate_evidence")
+            _trace(state, "citation_validation", "failed", "abstain_template:blocked")
+            return state
         quality = state["retrieval_quality"]
         if (
             settings.normalized_runtime_profile == "low_latency"
@@ -395,15 +476,28 @@ def abstain_node(state: NavigatorState) -> NavigatorState:
     state["abstained"] = True
     if not state["abstain_reason"]:
         state["abstain_reason"] = "Evidence is insufficient or unverifiable"
-    state["final_response"] = (
-        "I do not have sufficient information in the retrieved documents to answer this query."
-    )
+    state["final_response"] = FALLBACK_ABSTAIN_TEXT
     state["confidence"] = 0.0
     _trace(state, "abstain", "ok", state["abstain_reason"])
     return state
 
 
 def finalize_node(state: NavigatorState) -> NavigatorState:
+    if (
+        len(state.get("citations", [])) > 0
+        and bool(state.get("retrieval_quality", {}).get("adequate", False))
+        and not _policy_blocked(state)
+        and is_fallback_abstain_answer(state.get("final_response", ""))
+    ):
+        contradiction = "finalize_contradiction:adequate_evidence_with_abstain_template"
+        if contradiction not in state["validation_errors"]:
+            state["validation_errors"].append(contradiction)
+        state["abstained"] = True
+        state["abstain_reason"] = "Contradiction error: adequate evidence exists but response was abstain template"
+        state["final_response"] = (
+            "Contradiction detected: adequate cited evidence exists, but synthesis produced an abstention template. "
+            "Check trace and validation_errors for debugging."
+        )
     if state["abstained"] and not state["abstain_reason"]:
         state["abstain_reason"] = "Unspecified abstention"
     _trace(state, "finalize", "ok", "Completed workflow")

@@ -29,15 +29,17 @@ class _BM25Cache:
     bm25: BM25Okapi
 
 
-def _create_client() -> chromadb.PersistentClient:
+def _create_client() -> Any:
+    persist_dir = settings.resolved_chroma_persist_directory
+    os.makedirs(persist_dir, exist_ok=True)
     try:
         return chromadb.PersistentClient(
-            path=settings.chroma_persist_directory,
+            path=persist_dir,
             settings=ChromaSettings(anonymized_telemetry=False),
         )
     except TypeError:
         # Compatibility fallback for older/newer Chroma constructor signatures.
-        return chromadb.PersistentClient(path=settings.chroma_persist_directory)
+        return chromadb.PersistentClient(path=persist_dir)
 
 
 _client = _create_client()
@@ -47,7 +49,7 @@ _bm25_cache: _BM25Cache | None = None
 _bm25_lock = Lock()
 
 
-def _ensure_collection():
+def _ensure_collection() -> Any:
     global _collection
     if _collection is not None:
         return _collection
@@ -124,6 +126,16 @@ _ENTITY_IGNORE = {
     "does", "do", "is", "are", "can", "should", "would",
 }
 
+_WORKFLOW_INTENT_TERMS = {
+    "workflow", "workflows", "stage", "stages", "pipeline", "agentic", "graph", "langgraph",
+    "orchestration", "planner", "retriever", "synthesis", "validator", "this", "project", "system",
+    "architecture",
+}
+
+_RESEARCH_HINT_TERMS = {
+    "paper", "research", "survey", "arxiv", "literature", "citation", "academic",
+}
+
 
 def _query_terms(query: str) -> set[str]:
     return {t for t in _tokenize(query) if len(t) > 2 and t not in _STOPWORDS}
@@ -146,6 +158,70 @@ def _is_hard_query(query: str, sub_queries: list[str] | None = None) -> bool:
     if any(k in q for k in ["compare", "difference", "versus", "tradeoff", "multi-hop", "cross-source"]):
         return True
     return bool(sub_queries and len(sub_queries) >= 3)
+
+
+def _is_workflow_intent_query(query: str) -> bool:
+    terms = _query_terms(query)
+    return len(terms & _WORKFLOW_INTENT_TERMS) > 0
+
+
+def _is_research_query(query: str) -> bool:
+    terms = _query_terms(query)
+    return len(terms & _RESEARCH_HINT_TERMS) > 0
+
+
+def _chunk_term_overlap_count(query_terms: set[str], content: str) -> int:
+    if not query_terms:
+        return 0
+    content_terms = set(_tokenize(content))
+    return len(query_terms & content_terms)
+
+
+def _source_boost(query: str, metadata: dict[str, Any], source: str) -> float:
+    source_type = str(metadata.get("source_type", "")).lower()
+    source_text = " ".join(
+        [
+            str(source).lower(),
+            str(metadata.get("title", "")).lower(),
+            str(metadata.get("url", "")).lower(),
+            str(metadata.get("path", "")).lower(),
+        ]
+    )
+
+    boost = 1.0
+    workflow_intent = _is_workflow_intent_query(query)
+    research_intent = _is_research_query(query)
+
+    if workflow_intent:
+        if any(k in source_text for k in ["readme", "architecture", "ideathon", "resource_pack"]):
+            boost *= settings.retrieval_workflow_source_boost
+        if any(k in source_text for k in ["langgraph", "docs.langchain.com", "python.langchain.com"]):
+            boost *= settings.retrieval_langgraph_source_boost
+        if source_type == "pdf" and not research_intent:
+            boost *= settings.retrieval_pdf_penalty_for_workflow
+    return max(0.1, boost)
+
+
+def _dedupe_similar_chunks(chunks: list[RetrievedChunk], similarity_threshold: float = 0.92) -> list[RetrievedChunk]:
+    kept: list[RetrievedChunk] = []
+    signatures: list[set[str]] = []
+    for chunk in chunks:
+        token_set = set(_tokenize(str(chunk.get("content", ""))))
+        if not token_set:
+            continue
+        is_duplicate = False
+        for seen in signatures:
+            union = len(token_set | seen)
+            if union == 0:
+                continue
+            jaccard = len(token_set & seen) / union
+            if jaccard >= similarity_threshold:
+                is_duplicate = True
+                break
+        if not is_duplicate:
+            kept.append(chunk)
+            signatures.append(token_set)
+    return kept
 
 
 def _bm25_candidates(query: str, k: int) -> dict[str, float]:
@@ -188,6 +264,10 @@ def _vector_candidates(query: str, k: int) -> list[dict[str, Any]]:
 
 
 def query_chunks(queries: Iterable[str], top_k: int | None = None) -> list[RetrievedChunk]:
+    query_list = [q for q in queries if str(q).strip()]
+    if not query_list:
+        return []
+
     final_k = top_k or settings.effective_retrieval_top_k
     per_query_k = settings.effective_retrieval_per_query_k
     bm25_k = settings.retrieval_bm25_k
@@ -202,7 +282,16 @@ def query_chunks(queries: Iterable[str], top_k: int | None = None) -> list[Retri
     vector_weight /= denom
     bm25_weight /= denom
 
-    for query in queries:
+    primary_query = query_list[0]
+    primary_terms = _query_terms(primary_query)
+    workflow_intent = _is_workflow_intent_query(primary_query)
+    min_term_overlap = (
+        settings.retrieval_workflow_chunk_min_term_overlap
+        if workflow_intent
+        else settings.retrieval_chunk_min_term_overlap
+    )
+
+    for query in query_list:
         vector_rows = _vector_candidates(query, per_query_k)
         bm25_scores = _bm25_candidates(query, bm25_k)
 
@@ -213,7 +302,12 @@ def query_chunks(queries: Iterable[str], top_k: int | None = None) -> list[Retri
             distance = row["distance"]
             vector_score = _normalize_distance(distance)
             keyword_score = bm25_scores.get(str(doc_id), 0.0)
-            score = vector_weight * vector_score + bm25_weight * keyword_score
+            overlap_count = _chunk_term_overlap_count(primary_terms, content)
+            if primary_terms and overlap_count < min_term_overlap:
+                continue
+
+            source_multiplier = _source_boost(primary_query, metadata, str(metadata.get("source", "unknown")))
+            score = (vector_weight * vector_score + bm25_weight * keyword_score) * source_multiplier
 
             if doc_id not in merged:
                 merged[doc_id] = {
@@ -226,6 +320,8 @@ def query_chunks(queries: Iterable[str], top_k: int | None = None) -> list[Retri
                     "relevance_components": {
                         "vector_score": vector_score,
                         "keyword_score": keyword_score,
+                        "source_boost": source_multiplier,
+                        "term_overlap_count": float(overlap_count),
                         "combined_score": score,
                     },
                 }
@@ -240,10 +336,15 @@ def query_chunks(queries: Iterable[str], top_k: int | None = None) -> list[Retri
                     existing["relevance_components"] = {
                         "vector_score": vector_score,
                         "keyword_score": keyword_score,
+                        "source_boost": source_multiplier,
+                        "term_overlap_count": float(overlap_count),
                         "combined_score": score,
                     }
 
     ranked = sorted(merged.values(), key=lambda c: c["score"], reverse=True)
+    deduped = _dedupe_similar_chunks(ranked)
+    if deduped:
+        return deduped[:final_k]
     return ranked[:final_k]
 
 
@@ -282,6 +383,10 @@ def assess_retrieval_adequacy(
 
     term_overlap_ratio = (len(query_terms & corpus_terms) / len(query_terms)) if query_terms else 1.0
     entity_overlap_ratio = (len(query_entities & corpus_terms) / len(query_entities)) if query_entities else 1.0
+    top_overlap_counts: list[int] = []
+    for chunk in sorted(chunks, key=lambda c: float(c["score"]), reverse=True)[:2]:
+        top_overlap_counts.append(_chunk_term_overlap_count(query_terms, str(chunk.get("content", ""))))
+    top_relevance_ok = True if not query_terms else any(c >= settings.retrieval_chunk_min_term_overlap for c in top_overlap_counts)
 
     adequate = (
         max_score >= min_score
@@ -289,6 +394,7 @@ def assess_retrieval_adequacy(
         and source_diversity >= min_diversity
         and term_overlap_ratio >= settings.retrieval_query_overlap_min
         and entity_overlap_ratio >= settings.retrieval_entity_overlap_min
+        and top_relevance_ok
     )
 
     # Low-latency profile override
@@ -303,7 +409,11 @@ def assess_retrieval_adequacy(
 
     elif adequate:
         reason = "Adequate evidence"
-    elif term_overlap_ratio < settings.retrieval_query_overlap_min or entity_overlap_ratio < settings.retrieval_entity_overlap_min:
+    elif (
+        term_overlap_ratio < settings.retrieval_query_overlap_min
+        or entity_overlap_ratio < settings.retrieval_entity_overlap_min
+        or not top_relevance_ok
+    ):
         reason = "Weak topical match to query intent"
     else:
         reason = "Evidence quality below threshold"

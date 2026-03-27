@@ -207,3 +207,60 @@ def ingest_pdf(file_path: str) -> IngestionStats:
         stats["errors"].append(str(exc))
 
     return stats
+
+
+def ingest_text_file(file_path: str) -> IngestionStats:
+    stats: IngestionStats = {
+        "documents_processed": 1,
+        "chunks_added": 0,
+        "skipped_duplicates": 0,
+        "errors": [],
+    }
+    path = Path(file_path)
+    try:
+        if not path.exists():
+            raise FileNotFoundError(f"Text file not found: {path}")
+
+        collection = get_collection()
+        text = path.read_text(encoding="utf-8", errors="ignore").strip()
+        if not text:
+            return stats
+
+        hashes = _existing_hashes()
+        ids: list[str] = []
+        docs: list[str] = []
+        metadatas: list[Metadata] = []
+
+        for idx, chunk in enumerate(split_structured_text(text)):
+            content_hash = _content_hash(chunk)
+            if content_hash in hashes:
+                stats["skipped_duplicates"] += 1
+                continue
+
+            chunk_id = f"text::{content_hash[:24]}"
+            metadata = cast(
+                Metadata,
+                {
+                    "source": path.name,
+                    "source_type": "project_doc",
+                    "title": path.stem,
+                    "section": "document",
+                    "path": str(path.resolve()),
+                    "ingested_at": _timestamp(),
+                    "content_hash": content_hash,
+                    "chunk_index": idx,
+                },
+            )
+            ids.append(chunk_id)
+            docs.append(chunk)
+            metadatas.append(metadata)
+            hashes.add(content_hash)
+
+        if docs:
+            collection.upsert(ids=ids, documents=docs, metadatas=metadatas)
+            stats["chunks_added"] = len(docs)
+            refresh_bm25_cache()
+    except Exception as exc:
+        stats["errors"].append(str(exc))
+
+    return stats

@@ -148,10 +148,15 @@ def _is_model_available(model_name: str, available_models: set[str]) -> bool:
     return False
 
 
-def invoke_chat_with_timeout(prompt: str, purpose: str, timeout_seconds: float | None = None) -> Any:
+def invoke_chat_with_timeout(
+    prompt: str,
+    purpose: str,
+    timeout_seconds: float | None = None,
+    max_output_tokens: int | None = None,
+) -> Any:
     timeout = timeout_seconds or settings.effective_model_request_timeout_seconds
     profile = settings.normalized_runtime_profile
-    max_tokens = settings.effective_model_max_output_tokens
+    max_tokens = max_output_tokens or settings.effective_model_max_output_tokens
     model = get_shared_chat_model(profile, max_tokens)
 
     try:

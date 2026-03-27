@@ -1,6 +1,6 @@
 # Eval Report
 
-Dataset size: 120
+Dataset size: 5
 Dataset path: backend\eval\dataset_dev.jsonl
 
 ## Hardware + Runtime Profile
@@ -14,33 +14,30 @@ Dataset path: backend\eval\dataset_dev.jsonl
 
 | Metric | balanced | low_latency |
 |---|---:|---:|
-| Hit@k | 0.733 | 0.725 |
-| MRR | 0.690 | 0.675 |
-| Citation precision | 0.775 | 0.763 |
-| Support coverage | 0.642 | 0.635 |
-| Abstain precision | 1.000 | 0.297 |
-| Abstain recall | 0.967 | 1.000 |
-| Latency P50 (ms) | 69101.9 | 28120.2 |
-| Latency P95 (ms) | 80571.0 | 28773.6 |
+| Hit@k | 0.400 | 0.400 |
+| MRR | 0.200 | 0.200 |
+| Citation precision | 0.062 | 0.083 |
+| Support coverage | 0.250 | 0.250 |
+| Abstain precision | 1.000 | 1.000 |
+| Abstain recall | 1.000 | 1.000 |
+| Adversarial abstain rate | 0.000 | 0.000 |
+| Latency P50 (ms) | 45320.8 | 22431.6 |
+| Latency P95 (ms) | 50844.8 | 27219.9 |
 
 ## Per-Bucket Hit@k
 
 | Bucket | balanced | low_latency |
 |---|---:|---:|
-| adversarial_noisy | 0.000 | 0.000 |
-| comparison_questions | 1.000 | 1.000 |
-| edge_ambiguity | 1.000 | 1.000 |
-| fact_lookup | 0.950 | 0.900 |
-| multi_hop_synthesis | 1.000 | 1.000 |
-| procedure_how_to | 0.933 | 0.933 |
-| unanswerable_out_of_scope | 0.000 | 0.000 |
+| fact_lookup | 0.500 | 0.500 |
+| procedure_how_to | 0.000 | 0.000 |
+| unanswerable_out_of_scope | n/a | n/a |
 
 ## Abstain Subset
 
-- balanced: {'required_count': 30, 'precision': 1.0, 'recall': 0.9666666666666667, 'tp': 29, 'fp': 0, 'fn': 1}
-- low_latency: {'required_count': 30, 'precision': 0.297029702970297, 'recall': 1.0, 'tp': 30, 'fp': 71, 'fn': 0}
+- balanced: {'required_count': 1, 'precision': 1.0, 'recall': 1.0, 'tp': 1, 'fp': 0, 'fn': 0}
+- low_latency: {'required_count': 1, 'precision': 1.0, 'recall': 1.0, 'tp': 1, 'fp': 0, 'fn': 0}
 
 ## Citation Precision by Source Type
 
-- balanced: {'web': 0.775}
-- low_latency: {'web': 0.762962962962963}
+- balanced: {'pdf': 0.0, 'web': 1.0}
+- low_latency: {'pdf': 0.0, 'web': 1.0}

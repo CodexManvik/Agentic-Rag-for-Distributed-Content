@@ -137,15 +137,24 @@ def test_policy_scope_guard_blocks_private_intent() -> None:
 
 
 def test_retrieval_adequacy_downgrades_weak_topical_match() -> None:
+    previous_profile = settings.runtime_profile
+    previous_skip_overlap = settings.low_latency_skip_overlap_check
+    settings.runtime_profile = "balanced"
+    settings.low_latency_skip_overlap_check = False
+
     chunks = cast(list[RetrievedChunk], [
         {"chunk_id": "1", "source": "a", "content": "Weather report and climate information", "score": 0.95, "metadata": {}},
         {"chunk_id": "2", "source": "b", "content": "Ocean current discussion and rainfall", "score": 0.91, "metadata": {}},
         {"chunk_id": "3", "source": "c", "content": "Atmospheric pressure tutorial", "score": 0.88, "metadata": {}},
     ])
-    quality = assess_retrieval_adequacy(
-        chunks,
-        query="Explain LangGraph state transitions and citation validation",
-        sub_queries=["LangGraph state", "citation validation", "agent workflow"],
-    )
-    assert quality["adequate"] is False
-    assert "topical" in quality["reason"].lower()
+    try:
+        quality = assess_retrieval_adequacy(
+            chunks,
+            query="Explain LangGraph state transitions and citation validation",
+            sub_queries=["LangGraph state", "citation validation", "agent workflow"],
+        )
+        assert quality["adequate"] is False
+        assert "topical" in quality["reason"].lower()
+    finally:
+        settings.runtime_profile = previous_profile
+        settings.low_latency_skip_overlap_check = previous_skip_overlap

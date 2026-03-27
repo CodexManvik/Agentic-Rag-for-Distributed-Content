@@ -332,7 +332,8 @@ docker compose up --build
 ```bash
 pip install -r requirements.txt
 python backend/run_ingestion.py --reset
-cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8000
+cd backend 
+uvicorn app.main:app --host 0.0.0.0 --port 8000
 streamlit run frontend/app.py --server.port 8501
 ```
 
