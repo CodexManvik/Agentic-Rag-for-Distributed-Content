@@ -6,24 +6,27 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
-    ollama_chat_model: str = "qwen3.5:0.8b"
+    ollama_chat_model: str = "qwen3.5:2b"
     ollama_embedding_model: str = "nomic-embed-text:latest"
-
     chroma_collection_name: str = "knowledge_base"
     chroma_persist_directory: str = "./chroma_data"
-    retrieval_top_k: int = 6
-    retrieval_per_query_k: int = 4
+    retrieval_initial_k: int = 6
+    retrieval_top_k: int = 4
+    retrieval_per_query_k: int = 3
     retrieval_bm25_k: int = 6
     hybrid_retrieval_enabled: bool = True
+    hybrid_weight_vector: float = 0.70
+    hybrid_weight_content: float = 0.20
+    hybrid_weight_meta: float = 0.10
     bm25_cache_enabled: bool = True
     bm25_weight: float = 0.3
     vector_weight: float = 0.7
-    retrieval_min_score: float = 0.28
+    retrieval_min_score: float = 0.20
     retrieval_min_chunks: int = 2
     retrieval_min_source_diversity: int = 1
     retrieval_hard_query_min_score_boost: float = 0.08
     retrieval_hard_query_min_source_diversity: int = 3
-    retrieval_query_overlap_min: float = 0.15
+    retrieval_query_overlap_min: float = 0.10
     retrieval_entity_overlap_min: float = 0.10
     retrieval_chunk_min_term_overlap: int = 1
     retrieval_workflow_chunk_min_term_overlap: int = 2
@@ -36,8 +39,8 @@ class Settings(BaseSettings):
     max_retrieval_retries: int = 1
     max_validation_retries: int = 1
 
-    chunk_size: int = 1200
-    chunk_overlap: int = 200
+    chunk_size: int = 700
+    chunk_overlap: int = 100
 
     runtime_profile: str = "low_latency"
     model_temperature: float = 0.0
@@ -58,11 +61,11 @@ class Settings(BaseSettings):
     low_latency_reformulation_request_timeout_seconds: float = 6.0
     reformulation_max_output_tokens: int = 96
     low_latency_reformulation_max_output_tokens: int = 64
-    synthesis_request_timeout_seconds: float = 120.0
-    low_latency_synthesis_request_timeout_seconds: float = 70.0
-    synthesis_max_output_tokens: int = 700
+    synthesis_request_timeout_seconds: float = 30.0
+    low_latency_synthesis_request_timeout_seconds: float = 20.0
+    synthesis_max_output_tokens: int = 500
     low_latency_synthesis_max_output_tokens: int = 400
-    model_stop_sequences: str = ""
+    model_stop_sequences: str = "</think>,``` ,\n\nHuman:,\n\nUSER QUESTION:"
     fail_fast_on_startup: bool = True
 
     allowed_source_domains: str = (
@@ -101,7 +104,7 @@ class Settings(BaseSettings):
                 "retrieval_per_query_k": min(self.retrieval_per_query_k, 3),
                 "retrieval_top_k": min(max(self.retrieval_top_k, 5), 6),
                 "context_chunk_limit": 4,
-                "context_chunk_char_limit": 420,
+                "context_chunk_char_limit": 600,
             }
         if profile == "high_quality":
             return {
@@ -109,14 +112,14 @@ class Settings(BaseSettings):
                 "retrieval_per_query_k": max(self.retrieval_per_query_k, 4),
                 "retrieval_top_k": max(self.retrieval_top_k, 6),
                 "context_chunk_limit": 8,
-                "context_chunk_char_limit": 850,
+                "context_chunk_char_limit": 1000,
             }
         return {
             "planner_max_subqueries": 4,
             "retrieval_per_query_k": self.retrieval_per_query_k,
             "retrieval_top_k": self.retrieval_top_k,
             "context_chunk_limit": 6,
-            "context_chunk_char_limit": 650,
+            "context_chunk_char_limit": 800,
         }
 
     @property

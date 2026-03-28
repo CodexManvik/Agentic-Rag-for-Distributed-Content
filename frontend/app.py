@@ -213,7 +213,7 @@ def _render_citations(citations: list[dict[str, Any]], key_prefix: str) -> None:
             st.write(snippet)
 
 
-def _stream_chat(query: str) -> tuple[dict[str, Any] | None, str | None]:
+def _stream_chat(query: str, status_slot) -> tuple[dict[str, Any] | None, str | None]:
     try:
         response = _retry_request(
             "POST",
@@ -231,8 +231,8 @@ def _stream_chat(query: str) -> tuple[dict[str, Any] | None, str | None]:
 
     live_answer = ""
     answer_slot = st.empty()
-    status_slot = st.empty()
     final_payload: dict[str, Any] | None = None
+    last_stage = ""
 
     for raw_line in response.iter_lines(decode_unicode=True):
         if not raw_line:
@@ -246,22 +246,56 @@ def _stream_chat(query: str) -> tuple[dict[str, Any] | None, str | None]:
             continue
 
         event_type = str(event.get("type", ""))
+        
         if event_type == "status":
-            status_slot.caption(str(event.get("message", "running")))
+            msg = str(event.get("message", "running"))
+            status_slot.info(f"📊 {msg}")
+            
+        elif event_type == "trace":
+            # Live trace event - update with stage name
+            trace_event = event.get("event", {})
+            node = str(trace_event.get("node", "")).strip().lower().replace(" ", "_")
+            status_val = str(trace_event.get("status", ""))
+            duration = trace_event.get("duration_ms")
+            
+            stage_emoji = {
+                "normalize_query": "🔍",
+                "planning": "📋",
+                "retrieval": "📚",
+                "adequacy": "⚖️",
+                "synthesis": "✍️",
+                "citation_validation": "✅",
+                "finalize": "🎯",
+                "abstain": "⏸️",
+            }.get(node, "⚡")
+            
+            duration_text = f" ({duration:.0f}ms)" if isinstance(duration, (int, float)) else ""
+            status_slot.info(f"{stage_emoji} {node.upper()}: {status_val}{duration_text}")
+            last_stage = node
+            
         elif event_type == "heartbeat":
-            status_slot.caption("Working...")
+            status_slot.info("⏳ Processing...")
+            
         elif event_type == "token":
+            # Render tokens progressively
             live_answer += str(event.get("text", ""))
-            answer_slot.markdown(live_answer)
+            with answer_slot.container():
+                st.markdown(live_answer + " ▌")  # Show cursor while streaming
+                
         elif event_type == "error":
             return None, str(event.get("message", "stream_error"))
+            
         elif event_type == "final":
             final_payload = event
             break
 
+    # Final answer without cursor
+    if live_answer:
+        with answer_slot.container():
+            st.markdown(live_answer)
+
     if final_payload is None:
         if live_answer.strip():
-            # graceful fallback
             return {
                 "answer": live_answer,
                 "citations": [],
@@ -440,19 +474,18 @@ if prompt:
             st.markdown(user_text)
 
         with st.chat_message("assistant"):
-            with st.status("Running multi-agent workflow", expanded=True) as status:
-                status.write("Planner: decomposing intent")
+            with st.status("🚀 Running multi-agent workflow", expanded=True) as workflow_status:
                 start = time.perf_counter()
                 try:
-                    data, stream_error = _stream_chat(user_text)
+                    data, stream_error = _stream_chat(user_text, workflow_status)
                     if stream_error:
                         raise RuntimeError(stream_error)
                 except Exception as exc:
-                    status.update(label="Workflow failed", state="error", expanded=True)
+                    workflow_status.update(label="❌ Workflow failed", state="error", expanded=True)
                     msg = str(exc)
                     err_type = _classify_error(msg)
                     st.session_state.last_error_type = err_type
-                    st.error(f"Error type: {err_type}. Details: {msg}")
+                    st.error(f"Error type: {err_type}\n\nDetails: {msg}")
                     data = None
 
                 if data is not None:
@@ -469,10 +502,7 @@ if prompt:
                     st.session_state.last_latency_ms = elapsed_ms
                     st.session_state.last_error_type = "none"
 
-                    status.write("Retriever: evidence fetched")
-                    status.write("Synthesis: response generated")
-                    status.write("Validator: citation checks complete")
-                    status.update(label=f"Workflow complete ({elapsed_ms/1000:.1f}s)", state="complete", expanded=False)
+                    workflow_status.update(label=f"✅ Workflow complete ({elapsed_ms/1000:.1f}s)", state="complete", expanded=False)
 
                     st.markdown(answer)
                     if confidence > 0.7:

@@ -16,12 +16,29 @@ POLICY_PATTERNS = [
     r"\bhidden api key\b",
     r"\bapi keys?\b",
     r"\bleak\b",
+    # Prompt-injection / adversarial patterns
+    r"\bignore\s+(previous|prior|all|above|your)\b",
+    r"\bbypass\s+(your|the|all|any)\b",
+    r"\breveal\s+(internal|private|secret|hidden|confidential|key|password)\b",
+    r"\bdump\s+(all|the|secret|key|hidden|document|data|doc)\b",
+    r"\bsystem\s+prompt\b",
+    r"\bprompt\s+injection\b",
+    r"\bsalary\s+band\b",
+    r"\bsalary\s+spreadsheet\b",
+    r"\bhidden\s+(api|key|secret|document|data)\b",
+    r"\bexpose\s+(key|secret|credential|password|internal)\b",
+    r"\bextract\s+(secret|hidden|private|confidential)\b",
 ]
 
 
 @lru_cache(maxsize=1)
 def _compiled_policy_patterns() -> list[re.Pattern[str]]:
     return [re.compile(p, flags=re.IGNORECASE) for p in POLICY_PATTERNS]
+
+
+def _reload_patterns() -> None:
+    """Call after updating POLICY_PATTERNS at runtime to invalidate the cache."""
+    _compiled_policy_patterns.cache_clear()
 
 
 def detect_policy_scope_violation(query: str) -> tuple[bool, str | None, list[str]]:

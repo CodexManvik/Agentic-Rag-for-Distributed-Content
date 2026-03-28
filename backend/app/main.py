@@ -8,6 +8,7 @@ from starlette.responses import StreamingResponse
 from app.config import settings
 from app.api.schemas import ChatRequest, ChatResponse, Citation, RetrievalQuality, TraceEvent
 from app.graph.workflow import run_workflow
+from app.graph.state import NavigatorState
 from app.services.llm import check_ollama_readiness
 from app.services.vector_store import build_bm25_index
 
@@ -80,7 +81,7 @@ async def chat_stream(payload: ChatRequest) -> StreamingResponse:
         raise HTTPException(status_code=503, detail=f"Service unavailable: {_health_state['reason']}")
 
     async def generate():
-        result: dict[str, Any] | None = None
+        result: NavigatorState | None = None
         error_message: str | None = None
         partial_answer = ""
 
@@ -93,6 +94,12 @@ async def chat_stream(payload: ChatRequest) -> StreamingResponse:
 
         try:
             result = await task
+            
+            # Stream trace events in real-time
+            trace_events = result.get("trace", []) if result else []
+            for trace_event in trace_events:
+                yield f"data: {json.dumps({'type': 'trace', 'event': trace_event})}\n\n"
+            
             answer = str(result.get("final_response", ""))
             words = answer.split()
             for idx, word in enumerate(words):

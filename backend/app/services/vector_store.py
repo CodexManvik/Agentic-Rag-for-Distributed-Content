@@ -38,7 +38,6 @@ def _create_client() -> Any:
             settings=ChromaSettings(anonymized_telemetry=False),
         )
     except TypeError:
-        # Compatibility fallback for older/newer Chroma constructor signatures.
         return chromadb.PersistentClient(path=persist_dir)
 
 
@@ -113,6 +112,19 @@ def _normalize_distance(distance: float) -> float:
 
 def _tokenize(text: str) -> list[str]:
     return re.findall(r"[a-z0-9]+", text.lower())
+
+
+def _token_set(text: str) -> set[str]:
+    return set(_tokenize(text))
+
+
+def _jaccard(a: set[str], b: set[str]) -> float:
+    if not a or not b:
+        return 0.0
+    u = len(a | b)
+    if u == 0:
+        return 0.0
+    return len(a & b) / u
 
 
 _STOPWORDS = {
@@ -269,20 +281,31 @@ def query_chunks(queries: Iterable[str], top_k: int | None = None) -> list[Retri
         return []
 
     final_k = top_k or settings.effective_retrieval_top_k
-    per_query_k = settings.effective_retrieval_per_query_k
-    bm25_k = settings.retrieval_bm25_k
+    # Pull a larger candidate pool for reranking
+    per_query_k = max(settings.effective_retrieval_per_query_k, final_k * 3, 12)
+    bm25_k = max(settings.retrieval_bm25_k, final_k * 3, 12)
+
     merged: dict[str, RetrievedChunk] = {}
 
     vector_weight = max(0.0, settings.vector_weight)
     bm25_weight = max(0.0, settings.bm25_weight if settings.hybrid_retrieval_enabled else 0.0)
-    denom = vector_weight + bm25_weight
+
+    # New hybrid rerank components
+    overlap_weight = float(getattr(settings, "hybrid_weight_content", 0.20))
+    meta_weight = float(getattr(settings, "hybrid_weight_meta", 0.10))
+
+    denom = vector_weight + bm25_weight + overlap_weight + meta_weight
     if denom <= 0:
-        vector_weight, bm25_weight, denom = 1.0, 0.0, 1.0
+        vector_weight, bm25_weight, overlap_weight, meta_weight, denom = 1.0, 0.0, 0.0, 0.0, 1.0
     vector_weight /= denom
     bm25_weight /= denom
+    overlap_weight /= denom
+    meta_weight /= denom
 
     for query in query_list:
         query_terms = _query_terms(query)
+        q_token_set = _token_set(query)
+
         workflow_intent = _is_workflow_intent_query(query)
         min_term_overlap = (
             settings.retrieval_workflow_chunk_min_term_overlap
@@ -293,11 +316,37 @@ def query_chunks(queries: Iterable[str], top_k: int | None = None) -> list[Retri
         vector_rows = _vector_candidates(query, per_query_k)
         bm25_scores = _bm25_candidates(query, bm25_k)
 
+        # compute maxima for local normalization
+        overlap_vals: list[float] = []
+        meta_vals: list[float] = []
         for row in vector_rows:
+            content = str(row["content"])
+            metadata = row["metadata"] if isinstance(row["metadata"], dict) else {}
+            source = str(metadata.get("source", "unknown"))
+            meta_text = " ".join(
+                [
+                    source,
+                    str(metadata.get("title", "")),
+                    str(metadata.get("section", "")),
+                    str(metadata.get("url", "")),
+                    str(metadata.get("path", "")),
+                ]
+            )
+            overlap_vals.append(_jaccard(q_token_set, _token_set(content)))
+            meta_vals.append(_jaccard(q_token_set, _token_set(meta_text)))
+
+        max_overlap = max(overlap_vals) if overlap_vals else 1.0
+        max_meta = max(meta_vals) if meta_vals else 1.0
+        if max_overlap <= 0:
+            max_overlap = 1.0
+        if max_meta <= 0:
+            max_meta = 1.0
+
+        for i, row in enumerate(vector_rows):
             doc_id = row["doc_id"]
-            metadata = row["metadata"]
-            content = row["content"]
-            distance = row["distance"]
+            metadata = row["metadata"] if isinstance(row["metadata"], dict) else {}
+            content = str(row["content"])
+            distance = float(row["distance"])
 
             vector_score = _normalize_distance(distance)
             keyword_score = bm25_scores.get(str(doc_id), 0.0)
@@ -305,8 +354,17 @@ def query_chunks(queries: Iterable[str], top_k: int | None = None) -> list[Retri
             if query_terms and overlap_count < min_term_overlap:
                 continue
 
+            content_overlap = overlap_vals[i] / max_overlap
+            meta_overlap = meta_vals[i] / max_meta
+
             source_multiplier = _source_boost(query, metadata, str(metadata.get("source", "unknown")))
-            score = (vector_weight * vector_score + bm25_weight * keyword_score) * source_multiplier
+
+            score = (
+                vector_weight * vector_score
+                + bm25_weight * keyword_score
+                + overlap_weight * content_overlap
+                + meta_weight * meta_overlap
+            ) * source_multiplier
 
             if doc_id not in merged:
                 merged[doc_id] = {
@@ -319,6 +377,8 @@ def query_chunks(queries: Iterable[str], top_k: int | None = None) -> list[Retri
                     "relevance_components": {
                         "vector_score": vector_score,
                         "keyword_score": keyword_score,
+                        "content_overlap": content_overlap,
+                        "meta_overlap": meta_overlap,
                         "source_boost": source_multiplier,
                         "term_overlap_count": float(overlap_count),
                         "combined_score": score,
@@ -335,6 +395,8 @@ def query_chunks(queries: Iterable[str], top_k: int | None = None) -> list[Retri
                     existing["relevance_components"] = {
                         "vector_score": vector_score,
                         "keyword_score": keyword_score,
+                        "content_overlap": content_overlap,
+                        "meta_overlap": meta_overlap,
                         "source_boost": source_multiplier,
                         "term_overlap_count": float(overlap_count),
                         "combined_score": score,
@@ -342,9 +404,7 @@ def query_chunks(queries: Iterable[str], top_k: int | None = None) -> list[Retri
 
     ranked = sorted(merged.values(), key=lambda c: c["score"], reverse=True)
     deduped = _dedupe_similar_chunks(ranked)
-    if deduped:
-        return deduped[:final_k]
-    return ranked[:final_k]
+    return deduped[:final_k] if deduped else ranked[:final_k]
 
 
 def assess_retrieval_adequacy(
@@ -370,9 +430,11 @@ def assess_retrieval_adequacy(
 
     hard_query = _is_hard_query(query, sub_queries)
     min_score = settings.retrieval_min_score + (settings.retrieval_hard_query_min_score_boost if hard_query else 0.0)
+    # Cap hard-query diversity at 2 — requiring 3 distinct sources in a small corpus causes
+    # almost all multi-hop queries to fail adequacy and cascade to false abstains
     min_diversity = max(
         settings.retrieval_min_source_diversity,
-        settings.retrieval_hard_query_min_source_diversity if hard_query else settings.retrieval_min_source_diversity,
+        min(2, settings.retrieval_hard_query_min_source_diversity) if hard_query else settings.retrieval_min_source_diversity,
     )
 
     query_terms = _query_terms(query)
@@ -408,7 +470,6 @@ def assess_retrieval_adequacy(
         elif not adequate:
             reason = "Evidence quality below threshold"
 
-    # Low-latency profile override
     if (
         settings.low_latency_skip_overlap_check
         and settings.normalized_runtime_profile == "low_latency"
@@ -417,7 +478,6 @@ def assess_retrieval_adequacy(
     ):
         adequate = True
         reason = "Adequate evidence (low-latency override)"
-
     elif adequate:
         reason = "Adequate evidence"
     elif (
@@ -428,6 +488,7 @@ def assess_retrieval_adequacy(
         reason = "Weak topical match to query intent"
     else:
         reason = "Evidence quality below threshold"
+
     return {
         "max_score": max_score,
         "avg_score": avg_score,

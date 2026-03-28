@@ -6,3 +6,5 @@ backend/tests/__pycache__/
 backend/app/graph/__pycache__/
 chroma_data/
 .env
+backend/eval/__pycache__
+backend/app/api/__pycache__

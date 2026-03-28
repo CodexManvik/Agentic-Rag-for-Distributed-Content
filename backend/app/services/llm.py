@@ -11,7 +11,7 @@ from app.config import settings
 
 
 class ChatModel(Protocol):
-    def invoke(self, input: str) -> Any:
+    def invoke(self, input: str | list[Any]) -> Any:
         ...
 
 
@@ -61,7 +61,7 @@ def invoke_synthesis(
 
     # Start with configured stop sequences, then add safe synthesis guards.
     stop_sequences = list(settings.stop_sequences)
-    for s in ["</think>", "```", "\n\nHuman:", "\n\nUSER QUESTION:"]:
+    for s in ["</think>", "```json", "```", "\n\nHuman:", "\n\nUSER QUESTION:", "\n\nNote:", "\n\nPlease note"]:
         if s not in stop_sequences:
             stop_sequences.append(s)
 

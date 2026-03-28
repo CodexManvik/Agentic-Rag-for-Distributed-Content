@@ -115,11 +115,30 @@ def planning_agent(state: NavigatorState) -> NavigatorState:
 
     if settings.normalized_runtime_profile == "low_latency":
         base = query
-        expansions = [
-            base,
-            f"{base} definition",
-            f"{base} overview key concepts",
-        ]
+        expansions = [base]
+
+        q_lower = base.lower()
+        if any(k in q_lower for k in ["compare", "difference", "versus", "vs"]):
+            # comparison: add each side as a standalone sub-query
+            parts = re.split(r"\b(?:compare|versus|vs|difference between|and)\b", q_lower, maxsplit=1)
+            for p in parts:
+                p = p.strip()
+                if p and len(p) > 6:
+                    expansions.append(p)
+        elif any(k in q_lower for k in ["how", "steps", "procedure", "guide"]):
+            expansions.append(f"{base} tutorial steps")
+            expansions.append(f"{base} best practices")
+        elif any(k in q_lower for k in ["what is", "define", "explain", "describe"]):
+            # extract the noun phrase after the question word
+            noun = re.sub(r"^(what is|define|explain|describe)\s*", "", q_lower).strip()
+            if noun:
+                expansions.append(f"{noun} overview")
+                expansions.append(f"{noun} use cases examples")
+        else:
+            # Generic: add a "use case" and "guide" variant
+            expansions.append(f"{base} use cases")
+            expansions.append(f"{base} guide")
+
         state["sub_queries"] = _unique_queries(expansions)[: max(2, settings.planner_max_subqueries)]
         _trace(state, "planning", "ok", f"Low-latency path generated {len(state['sub_queries'])} sub-queries")
         return state
@@ -262,26 +281,17 @@ def _extract_json(text: str) -> str:
 
 
 def _synthesis_prompt(state: NavigatorState, context: str, strict: bool) -> str:
-    citation_instruction = (
-        "Every factual sentence MUST end with a [n] citation marker where n is the chunk number from CONTEXT."
-        if strict
-        else "Add [n] citation markers (e.g. [1], [2]) to factual sentences, where n matches CONTEXT chunk numbers."
-    )
+    num_chunks = max(1, context.count("\n["))
+    must_cite = "EVERY sentence MUST end with [n]." if strict else "Cite each fact with [n]."
     return (
-        "You are a knowledge synthesis agent.\n"
-        "Answer the USER QUESTION using ONLY the CONTEXT.\n"
-        "If context is insufficient, return an empty answer with low confidence.\n\n"
-        f"CONTEXT (chunk-numbered):\n{context}\n\n"
-        "RULES:\n"
-        f"- {citation_instruction}\n"
-        "- Do not use outside knowledge.\n"
-        "- Keep answer concise (2-4 sentences).\n"
-        "- confidence must be a float in [0.0, 1.0].\n"
-        "- Return ONLY valid JSON, no markdown, no prose, no code fences.\n"
-        "- Do NOT include keys other than: answer, confidence.\n\n"
-        'OUTPUT JSON SCHEMA:\n'
-        '{"answer":"<text with [n] citations>","confidence":0.0}\n\n'
-        f"USER QUESTION: {state['original_query']}\n"
+        "You are a grounded QA assistant. Use ONLY the CONTEXT below to answer.\n"
+        f"{must_cite} n = chunk number (1 to {num_chunks}).\n"
+        "Output ONLY one JSON object. No markdown. No extra keys.\n"
+        'Format: {"answer":"fact one [1]. fact two [2].","confidence":0.85,"cited_indices":[1,2]}\n'
+        'If context lacks the answer: {"answer":"","confidence":0.0,"cited_indices":[]}\n\n'
+        f"CONTEXT:\n{context}\n\n"
+        f"QUESTION: {state['original_query']}\n"
+        "JSON:"
     )
 
 
@@ -347,6 +357,7 @@ def _run_synthesis(state: NavigatorState, strict: bool) -> SynthesisOutput:
             timeout_seconds=settings.effective_synthesis_request_timeout_seconds,
             max_output_tokens=settings.effective_synthesis_max_output_tokens,
         )
+        print("====== LLM RAW OUTPUT ======\n", repr(raw_text), "\n============================")
     except ModelInvocationError:
         return {
             "answer": FALLBACK_ABSTAIN_TEXT,
@@ -358,10 +369,21 @@ def _run_synthesis(state: NavigatorState, strict: bool) -> SynthesisOutput:
     try:
         parsed = json.loads(_extract_json(raw_text))
         answer = str(parsed.get("answer", "")).strip()
+        
+        # Parse cited_indices — always derive from inline [n] markers in the answer text
+        # (the model's cited_indices field is often incomplete or wrong)
+        inline_cited = sorted(set(int(m) for m in re.findall(r"\[(\d+)\]", answer)))
         cited_indices_raw = parsed.get("cited_indices", [])
-        cited_indices = [int(i) for i in cited_indices_raw if isinstance(i, int) or str(i).isdigit()]
+        if isinstance(cited_indices_raw, list):
+            json_cited = [int(i) for i in cited_indices_raw if isinstance(i, int) or (isinstance(i, str) and i.isdigit())]
+        else:
+            json_cited = []
+        # Union of both: trust inline markers as primary, JSON list as supplement
+        cited_indices = sorted(set(inline_cited) | set(json_cited))
+        
         raw_confidence = float(parsed.get("confidence", 0.0))
         confidence = raw_confidence / 100.0 if raw_confidence > 1.0 else raw_confidence
+        
         abstain_reason = parsed.get("abstain_reason")
         abstain_reason_str = str(abstain_reason).strip() if isinstance(abstain_reason, str) and str(abstain_reason).strip() else None
 
@@ -375,17 +397,22 @@ def _run_synthesis(state: NavigatorState, strict: bool) -> SynthesisOutput:
             "abstain_reason": abstain_reason_str,
         }
 
-    except Exception:
+    except Exception as e:
+        # Attempted parse failure — strip think tags and fences
         salvaged = raw_text.strip()
         salvaged = re.sub(r"<think>.*?</think>", "", salvaged, flags=re.DOTALL).strip()
         salvaged = re.sub(r"```(?:json)?", "", salvaged, flags=re.IGNORECASE).replace("```", "").strip()
 
+        # Try one more time with lenient JSON extraction
         if "{" in salvaged and "}" in salvaged and "answer" in salvaged:
             try:
                 maybe = json.loads(_extract_json(salvaged))
                 txt = str(maybe.get("answer", "")).strip()
                 cited_raw = maybe.get("cited_indices", [])
-                cited = [int(i) for i in cited_raw if isinstance(i, int) or str(i).isdigit()]
+                cited = [int(i) for i in cited_raw if isinstance(i, int) or (isinstance(i, str) and i.isdigit())] if isinstance(cited_raw, list) else []
+                # Derive cited_indices from inline [n] markers if list is empty
+                if not cited and txt:
+                    cited = sorted(set(int(m) for m in re.findall(r"\[(\d+)\]", txt)))
                 conf_raw = float(maybe.get("confidence", 0.3))
                 conf = conf_raw / 100.0 if conf_raw > 1.0 else conf_raw
                 if txt:
@@ -398,18 +425,27 @@ def _run_synthesis(state: NavigatorState, strict: bool) -> SynthesisOutput:
             except Exception:
                 pass
 
-        if salvaged and not is_fallback_abstain_answer(salvaged) and len(salvaged) > 20:
-            return {
-                "answer": salvaged,
-                "cited_indices": [],
-                "confidence": 0.3,
-                "abstain_reason": None,
-            }
+        # Last resort: if the raw text itself looks like an answer with citations, use it directly
+        # (model output the answer text instead of JSON — common with small models)
+        inline_citations = sorted(set(int(m) for m in re.findall(r"\[(\d+)\]", salvaged)))
+        plain_text = salvaged.strip()
+        # Only accept if it has citation markers and is not the fallback abstain phrase
+        if inline_citations and plain_text and not is_fallback_abstain_answer(plain_text):
+            # Strip any residual JSON scaffolding (e.g. leading `{"answer":`)
+            plain_text = re.sub(r'^\{?"?answer"?\s*:\s*"?', "", plain_text).strip().strip('"').strip()
+            if len(plain_text) > 20:
+                return {
+                    "answer": plain_text,
+                    "cited_indices": inline_citations,
+                    "confidence": 0.4,
+                    "abstain_reason": None,
+                }
 
+        # Fallback: don't mark as abstain, let caller retry in strict mode
         return {
             "answer": FALLBACK_ABSTAIN_TEXT,
             "cited_indices": [],
-            "confidence": 0.3,
+            "confidence": 0.0,
             "abstain_reason": None,
         }
 
@@ -423,9 +459,11 @@ def synthesis_agent(state: NavigatorState) -> NavigatorState:
 
     answer_is_abstain = is_fallback_abstain_answer(str(synth.get("answer", "")))
     model_declared_abstain = bool(synth.get("abstain_reason"))
+    
+    # Check if we routed here despite 'adequate' being false (moderate support edge case)
+    # The fix: Do not demand adequate==True for the deterministic fallback if evidence exists.
     parse_like_failure = (
         answer_is_abstain
-        and bool(state.get("retrieval_quality", {}).get("adequate", False))
         and not _policy_blocked(state)
         and not _no_evidence(state)
     )
@@ -442,9 +480,10 @@ def synthesis_agent(state: NavigatorState) -> NavigatorState:
             if retry_abstain and not retry_declared:
                 synth["abstain_reason"] = "Synthesis parse failure after strict retry"
 
+    # CRITICAL FIX for False Positives: Don't require `retrieval_quality["adequate"] == True`
+    # Just verify we actually HAVE evidence and aren't policy blocked.
     if (
         is_fallback_abstain_answer(str(synth.get("answer", "")))
-        and bool(state.get("retrieval_quality", {}).get("adequate", False))
         and not _policy_blocked(state)
         and not _no_evidence(state)
     ):
@@ -460,18 +499,38 @@ def synthesis_agent(state: NavigatorState) -> NavigatorState:
 
         if parts:
             merged = _clean_fallback_text(" ".join(parts))
-            synth = {
-                "answer": (
-                    "Retrieval-augmented generation (RAG) combines retrieval from external documents "
-                    "with generation by an LLM. "
-                    f"In this system, retrieved evidence indicates: {merged}"
-                ),
+            synth_dict: SynthesisOutput = {
+                "answer": f"Based on retrieved evidence: {merged}",
                 "cited_indices": used,
                 "confidence": 0.32,
                 "abstain_reason": None,
             }
+            synth = synth_dict
             state["used_deterministic_fallback"] = True
             _trace(state, "synthesis", "ok", "Used deterministic fallback answer after parse failure")
+
+    # Prune citations list to only those actually referenced in the answer.
+    # Unreferenced citation objects inflate citation FP in evaluation.
+    cited_set = set(synth.get("cited_indices", []))
+    if cited_set and not is_fallback_abstain_answer(str(synth.get("answer", ""))):
+        kept_citations = [c for c in state["citations"] if c.get("index") in cited_set]
+        
+        # BUILD MAPPING: old index → new index
+        old_to_new: dict[int, int] = {}
+        for new_idx, c in enumerate(kept_citations, start=1):
+            old_idx = int(c.get("index", 0) or 0)
+            old_to_new[old_idx] = new_idx
+            c["index"] = new_idx
+        
+        # REMAP ANSWER TEXT: [old] → [new]
+        answer_text = str(synth.get("answer", ""))
+        for old_idx, new_idx in sorted(old_to_new.items(), reverse=True):
+            answer_text = answer_text.replace(f"[{old_idx}]", f"[{new_idx}]")
+        
+        synth["answer"] = answer_text
+        state["citations"] = kept_citations
+        # Rebuild cited_indices to match new sequential indices
+        synth["cited_indices"] = list(range(1, len(kept_citations) + 1))
 
     state["synthesis_output"] = synth
     state["final_response"] = synth["answer"]
@@ -490,11 +549,13 @@ def synthesis_agent(state: NavigatorState) -> NavigatorState:
 
 
 def citation_validation_agent(state: NavigatorState) -> NavigatorState:
-    if bool(state.get("used_deterministic_fallback", False)):
-        state["abstained"] = False
-        state["abstain_reason"] = None
-        _trace(state, "citation_validation", "ok", "Accepted deterministic fallback answer")
-        return state
+    # REMOVED: blanket skip for deterministic fallback
+    # Instead, validate ALL answers including fallback ones
+    # if bool(state.get("used_deterministic_fallback", False)):
+    #     state["abstained"] = False
+    #     state["abstain_reason"] = None
+    #     _trace(state, "citation_validation", "ok", "Accepted deterministic fallback answer")
+    #     return state
 
     citation_snippets = {
         int(c.get("index", 0)): str(c.get("snippet", ""))
@@ -561,13 +622,37 @@ def citation_validation_agent(state: NavigatorState) -> NavigatorState:
         state["confidence"] = strict["confidence"]
         state["abstain_reason"] = strict["abstain_reason"]
 
-        if bool(state.get("used_deterministic_fallback", False)):
-            state["abstained"] = False
-            state["abstain_reason"] = None
-            state["validation_errors"] = []
-            _trace(state, "citation_validation", "ok", "Accepted deterministic fallback after regeneration")
-            return state
+        # Re-prune citations to those actually referenced in the new answer
+        new_cited_set = set(strict.get("cited_indices", []))
+        if new_cited_set and not is_fallback_abstain_answer(str(strict.get("answer", ""))):
+            kept_citations = [c for c in state["citations"] if c.get("index") in new_cited_set]
+            
+            # BUILD MAPPING: old index → new index
+            old_to_new: dict[int, int] = {}
+            for new_idx, c in enumerate(kept_citations, start=1):
+                old_idx = int(c.get("index", 0) or 0)
+                old_to_new[old_idx] = new_idx
+                c["index"] = new_idx
+            
+            # REMAP answer text to new indices
+            answer_text = str(strict.get("answer", ""))
+            for old_idx, new_idx in sorted(old_to_new.items(), reverse=True):
+                answer_text = answer_text.replace(f"[{old_idx}]", f"[{new_idx}]")
+            
+            strict["answer"] = answer_text
+            state["citations"] = kept_citations
+            state["final_response"] = answer_text
+            
+            # Rebuild citation_snippets with NEW sequential indices
+            citation_snippets = {
+                int(c.get("index", 0)): str(c.get("snippet", ""))
+                for c in state["citations"]
+                if isinstance(c.get("index"), int)
+            }
 
+        # REMOVED blanket acceptance of deterministic fallback
+        # Validate it like any other answer (BUG #5 fix)
+        
         second = validate_citations(
             state["final_response"],
             len(state["citations"]),
@@ -576,6 +661,14 @@ def citation_validation_agent(state: NavigatorState) -> NavigatorState:
         if second["valid"]:
             state["validation_errors"] = []
             _trace(state, "citation_validation", "ok", "Passed after one regeneration")
+            return state
+        
+        # Check if deterministic fallback failed validation (BUG #5 fix)
+        if bool(state.get("used_deterministic_fallback", False)):
+            state["abstained"] = True
+            state["abstain_reason"] = "Fallback answer failed citation validation"
+            state["validation_errors"] = second["errors"]
+            _trace(state, "citation_validation", "failed", "fallback_validation_failed")
             return state
 
         state["validation_errors"] = second["errors"]
@@ -610,6 +703,26 @@ def finalize_node(state: NavigatorState) -> NavigatorState:
     blocked = _policy_blocked(state)
     reason = str(state.get("abstain_reason") or "").lower()
     deterministic_fallback = bool(state.get("used_deterministic_fallback", False))
+    chunk_count = int(state.get("retrieval_quality", {}).get("chunk_count", 0))
+
+    # CATCH: Fallback answer + actual citations + no explicit abstain reason
+    # = Silent synthesis failure that should be flagged (BUG #10 fix)
+    if (
+        is_fallback_abstain_answer(response)
+        and chunk_count >= 2
+        and not state.get("abstain_reason")
+        and not blocked
+        and not deterministic_fallback
+    ):
+        # Silent abstain despite having evidence
+        state["abstained"] = True
+        state["abstain_reason"] = (
+            "Synthesis was unable to generate a grounded answer despite having "
+            f"retrieved {chunk_count} relevant chunks. Try rephrasing or ingesting more specific docs."
+        )
+        state["validation_errors"].append("silent_abstain_with_evidence")
+        _trace(state, "finalize", "warning", state["abstain_reason"])
+        return state
 
     if (
         len(state.get("citations", [])) > 0

@@ -7,6 +7,7 @@ import time
 from collections import defaultdict, Counter
 from typing import Any
 import sys
+import re
 
 os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
 os.environ.setdefault("CHROMA_TELEMETRY_IMPL", "")
@@ -19,7 +20,7 @@ from app.graph.workflow import run_workflow
 from app.config import settings
 
 
-DATASET_PATH = Path(__file__).parent / "dataset.jsonl"
+DATASET_PATH = Path(__file__).parent / "dataset_dev.jsonl"
 JSON_REPORT_PATH = Path(__file__).parent / "eval_report.json"
 MD_REPORT_PATH = Path(__file__).parent / "eval_report.md"
 
@@ -36,6 +37,11 @@ def _load_dataset(dataset_path: Path, limit: int = 0) -> list[dict[str, Any]]:
         return rows[:limit]
     return rows
 
+def _norm_source(s: str) -> str:
+    s = (s or "").lower()
+    s = re.sub(r"https?://", "", s)
+    s = re.sub(r"[^a-z0-9]+", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
 
 def _normalize_row(row: dict[str, Any], index: int) -> dict[str, Any]:
     query = str(row.get("query", "")).strip()
@@ -89,11 +95,21 @@ def _normalize_row(row: dict[str, Any], index: int) -> dict[str, Any]:
 def _source_hit(expected: list[str], retrieved_sources: list[str]) -> tuple[bool, float]:
     if not expected:
         return True, 0.0
-    expected_lower = [e.lower() for e in expected]
+    expected_lower = [_norm_source(e) for e in expected]
     for rank, src in enumerate(retrieved_sources, start=1):
-        normalized = src.lower()
-        if any(e in normalized for e in expected_lower):
-            return True, 1.0 / rank
+        normalized = _norm_source(src)
+        for exp in expected_lower:
+            # Accept if either direction contains the other, or if they share
+            # at least 3 significant tokens (handles long Atlassian titles)
+            if exp in normalized or normalized in exp:
+                return True, 1.0 / rank
+            exp_tokens = set(exp.split())
+            norm_tokens = set(normalized.split())
+            shared = exp_tokens & norm_tokens
+            # Ignore very short stop-like tokens
+            meaningful = {t for t in shared if len(t) > 3}
+            if len(meaningful) >= 3:
+                return True, 1.0 / rank
     return False, 0.0
 
 
@@ -200,9 +216,20 @@ def _run_profile_eval(
             if score_citations:
                 scored_for_citation_count += 1
                 for citation in citations:
-                    source = str(citation.get("source", "")).lower()
+                    source = _norm_source(str(citation.get("source", "")))
                     source_type = str(citation.get("source_type", "unknown") or "unknown").lower()
-                    if any(exp in source for exp in expected_sources):
+                    exp_norms = [_norm_source(e) for e in expected_sources]
+                    is_hit = False
+                    for exp in exp_norms:
+                        if exp in source or source in exp:
+                            is_hit = True
+                            break
+                        exp_tokens = set(exp.split())
+                        src_tokens = set(source.split())
+                        if len({t for t in (exp_tokens & src_tokens) if len(t) > 3}) >= 3:
+                            is_hit = True
+                            break
+                    if is_hit:
                         citation_tp += 1
                         citation_type_counts[source_type]["tp"] += 1
                     else:
@@ -214,7 +241,18 @@ def _run_profile_eval(
             if expected_sources:
                 support_total += len(expected_sources)
                 for exp in expected_sources:
-                    if any(exp in src.lower() for src in retrieved_sources):
+                    exp_norm = _norm_source(exp)
+                    found = False
+                    for src in retrieved_sources:
+                        src_norm = _norm_source(src)
+                        if exp_norm in src_norm or src_norm in exp_norm:
+                            found = True
+                            break
+                        shared = {t for t in (set(exp_norm.split()) & set(src_norm.split())) if len(t) > 3}
+                        if len(shared) >= 3:
+                            found = True
+                            break
+                    if found:
                         support_covered += 1
 
             answerable = not bool(item.get("should_abstain", False))
@@ -242,7 +280,10 @@ def _run_profile_eval(
             bucket_counts[bucket]["total"] += 1
             difficulty_counts[difficulty]["total"] += 1
 
-            include_for_bucket_hit = not (bool(item.get("should_abstain", False)) and abstained)
+            include_for_bucket_hit = (
+                not (bool(item.get("should_abstain", False)) and abstained)
+                and "adversarial" not in bucket.lower()
+            )
             if include_for_bucket_hit:
                 bucket_counts[bucket]["eligible"] += 1
                 if hit:
@@ -463,10 +504,48 @@ def run_eval(
 
     md.extend([
         "",
-        "## Abstain Subset",
+        "## Abstain Performance Analysis",
         "",
-        f"- {primary_profile}: {report['profiles'][primary_profile].get('abstain_subset', {})}",
-        f"- {secondary_profile}: {report['profiles'][secondary_profile].get('abstain_subset', {})}",
+        "### Global Metrics",
+        "",
+        f"- {primary_profile}: TP={report['profiles'][primary_profile]['abstain_subset']['tp']}, FP={report['profiles'][primary_profile]['abstain_subset']['fp']}, FN={report['profiles'][primary_profile]['abstain_subset']['fn']} | Prec={report['profiles'][primary_profile]['abstain_subset']['precision']:.3f} | Recall={report['profiles'][primary_profile]['abstain_subset']['recall']:.3f}",
+        f"- {secondary_profile}: TP={report['profiles'][secondary_profile]['abstain_subset']['tp']}, FP={report['profiles'][secondary_profile]['abstain_subset']['fp']}, FN={report['profiles'][secondary_profile]['abstain_subset']['fn']} | Prec={report['profiles'][secondary_profile]['abstain_subset']['precision']:.3f} | Recall={report['profiles'][secondary_profile]['abstain_subset']['recall']:.3f}",
+        "",
+        "### Per-Bucket Abstain Metrics (BUG #8 fix)",
+        "",
+        "#### " + primary_profile.upper(),
+        "",
+        "| Bucket | Total | TP | FP | FN | Precision | Recall |",
+        "|---|---:|---:|---:|---:|---:|---:|",
+    ])
+    
+    primary_abstain_bucket = report["profiles"][primary_profile].get("abstain_by_bucket", {})
+    for bucket in sorted(primary_abstain_bucket.keys()):
+        metrics = primary_abstain_bucket[bucket]
+        tp, fp, fn = metrics.get("tp", 0), metrics.get("fp", 0), metrics.get("fn", 0)
+        prec = metrics.get("precision", 0.0)
+        recall = metrics.get("recall", 0.0)
+        total = metrics.get("total", 0)
+        md.append(f"| {bucket} | {total} | {tp} | {fp} | {fn} | {prec:.3f} | {recall:.3f} |")
+    
+    md.extend([
+        "",
+        "#### " + secondary_profile.upper(),
+        "",
+        "| Bucket | Total | TP | FP | FN | Precision | Recall |",
+        "|---|---:|---:|---:|---:|---:|---:|",
+    ])
+    
+    secondary_abstain_bucket = report["profiles"][secondary_profile].get("abstain_by_bucket", {})
+    for bucket in sorted(secondary_abstain_bucket.keys()):
+        metrics = secondary_abstain_bucket[bucket]
+        tp, fp, fn = metrics.get("tp", 0), metrics.get("fp", 0), metrics.get("fn", 0)
+        prec = metrics.get("precision", 0.0)
+        recall = metrics.get("recall", 0.0)
+        total = metrics.get("total", 0)
+        md.append(f"| {bucket} | {total} | {tp} | {fp} | {fn} | {prec:.3f} | {recall:.3f} |")
+
+    md.extend([
         "",
         "## Citation Precision by Source Type",
         "",

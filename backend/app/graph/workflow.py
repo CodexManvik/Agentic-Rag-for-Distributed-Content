@@ -84,25 +84,22 @@ def _route_after_adequacy(state: NavigatorState) -> str:
     if quality["adequate"]:
         return "synthesis"
 
-    moderate_support = (
-        quality["max_score"] >= max(0.30, settings.retrieval_min_score * 0.75)
-        and quality["chunk_count"] >= max(2, settings.retrieval_min_chunks - 1)
-        and quality["source_diversity"] >= 1
+    # REMOVED "moderate_support" exception (BUG #6 fix)
+    # Only route to synthesis if evidence is actually meaningful AND diverse
+    has_meaningful_evidence = (
+        quality["max_score"] >= 0.30  # STRICT threshold
+        and quality["chunk_count"] >= 2
+        and quality["source_diversity"] >= 2
     )
 
-    if moderate_support:
+    if has_meaningful_evidence:
         return "synthesis"
 
+    # For low-latency, retry before failing
     if settings.normalized_runtime_profile == "low_latency":
-        very_weak = (
-            quality["max_score"] < max(0.20, settings.retrieval_min_score * 0.6)
-            or quality["chunk_count"] <= 1
-            or quality["source_diversity"] == 0
-        )
-        return "abstain" if very_weak else "synthesis"
+        if state["retries_used"] < settings.max_retrieval_retries:
+            return "reformulation"
 
-    if state["retries_used"] < settings.max_retrieval_retries:
-        return "reformulation"
     return "abstain"
 
 

@@ -34,16 +34,16 @@ frontend/app.py (Streamlit)
 
 ## Tech Stack
 
-| Component | Technology |
-|---|---|
-| Backend API | FastAPI (async) |
-| Agent Orchestration | LangGraph |
-| Vector Store | ChromaDB |
-| Retrieval | Hybrid: vector similarity + BM25 |
-| Chat Model | Ollama `qwen3.5:0.8b` |
-| Embeddings | Ollama `nomic-embed-text:latest` |
-| Frontend | Streamlit |
-| Infra | Docker Compose |
+| Component           | Technology                       |
+| ------------------- | -------------------------------- |
+| Backend API         | FastAPI (async)                  |
+| Agent Orchestration | LangGraph                        |
+| Vector Store        | ChromaDB                         |
+| Retrieval           | Hybrid: vector similarity + BM25 |
+| Chat Model          | Ollama `qwen3.5:0.8b`            |
+| Embeddings          | Ollama `nomic-embed-text:latest` |
+| Frontend            | Streamlit                        |
+| Infra               | Docker Compose                   |
 
 ## Agent Workflow
 
@@ -61,6 +61,7 @@ flowchart TD
 ```
 
 Why this is truly agentic:
+
 - Explicit role separation across planning, retrieval, adequacy, reformulation, synthesis, and validation.
 - Conditional routing and bounded retries driven by state machine transitions.
 - Full trace persisted in `AgentState` and surfaced in the UI.
@@ -95,17 +96,17 @@ Why this is truly agentic:
 
 Location: `backend/eval/`
 
-| File | Purpose |
-|---|---|
-| `dataset_dev.jsonl` | 120-question dev split (answerable + unanswerable) |
-| `dataset_hidden.jsonl` | Hidden split for final judge validation |
-| `dataset.jsonl` | Full unfiltered dataset |
-| `eval_matrix_target.json` | Target bucket counts (120-question balanced matrix) |
-| `run_eval.py` | Main eval runner, computes all metrics |
+| File                            | Purpose                                                    |
+| ------------------------------- | ---------------------------------------------------------- |
+| `dataset_dev.jsonl`             | 120-question dev split (answerable + unanswerable)         |
+| `dataset_hidden.jsonl`          | Hidden split for final judge validation                    |
+| `dataset.jsonl`                 | Full unfiltered dataset                                    |
+| `eval_matrix_target.json`       | Target bucket counts (120-question balanced matrix)        |
+| `run_eval.py`                   | Main eval runner, computes all metrics                     |
 | `generate_candidate_dataset.py` | Semi-automated candidate generation from ingested sections |
-| `prepare_dataset_splits.py` | Schema upgrade + dev/hidden split |
-| `check_matrix_coverage.py` | Bucket coverage and abstain-ratio validation |
-| `build_demo_matrix_dataset.py` | Demo matrix builder |
+| `prepare_dataset_splits.py`     | Schema upgrade + dev/hidden split                          |
+| `check_matrix_coverage.py`      | Bucket coverage and abstain-ratio validation               |
+| `build_demo_matrix_dataset.py`  | Demo matrix builder                                        |
 
 `run_eval.py` computes: Hit@k, MRR, citation precision, support coverage, abstain precision, abstain recall, adversarial abstain rate, per-bucket Hit@k, per-difficulty Hit@k, citation precision by source type, and abstain subset (tp/fp/fn).
 
@@ -118,68 +119,68 @@ Dataset: `backend/eval/dataset_dev.jsonl` — **120 questions**
 Hardware: Windows-10-10.0.26200-SP0, Python 3.11.0
 Chat model: `qwen3.5:0.8b` | Embedding model: `nomic-embed-text:latest`
 
-| Metric | balanced | low_latency |
-|---|---:|---:|
-| Retrieval Hit@k | 0.383 | 0.417 |
-| MRR | 0.115 | 0.129 |
-| Citation precision | 0.309 | 0.177 |
-| Support coverage | 0.117 | 0.146 |
-| Abstain precision | 0.345 | 0.580 |
-| Abstain recall | 1.000 | 0.967 |
-| Adversarial abstain rate | 1.000 | 1.000 |
-| Latency P50 (ms) | 40,277 | 40,384 |
-| Latency P95 (ms) | 75,954 | 49,155 |
+| Metric                   | balanced | low_latency |
+| ------------------------ | -------: | ----------: |
+| Retrieval Hit@k          |    0.383 |       0.417 |
+| MRR                      |    0.115 |       0.129 |
+| Citation precision       |    0.309 |       0.177 |
+| Support coverage         |    0.117 |       0.146 |
+| Abstain precision        |    0.345 |       0.580 |
+| Abstain recall           |    1.000 |       0.967 |
+| Adversarial abstain rate |    1.000 |       1.000 |
+| Latency P50 (ms)         |   40,277 |      40,384 |
+| Latency P95 (ms)         |   75,954 |      49,155 |
 
 ### Per-Bucket Retrieval Hit@k
 
-| Bucket | balanced | low_latency |
-|---|---:|---:|
-| adversarial_noisy | n/a | n/a |
-| comparison_questions | 0.000 | 0.000 |
-| edge_ambiguity | 0.000 | 0.000 |
-| fact_lookup | 0.350 | 0.500 |
-| multi_hop_synthesis | 0.000 | 0.000 |
-| procedure_how_to | 0.600 | 0.667 |
-| unanswerable_out_of_scope | n/a | 1.000 |
+| Bucket                    | balanced | low_latency |
+| ------------------------- | -------: | ----------: |
+| adversarial_noisy         |      n/a |         n/a |
+| comparison_questions      |    0.000 |       0.000 |
+| edge_ambiguity            |    0.000 |       0.000 |
+| fact_lookup               |    0.350 |       0.500 |
+| multi_hop_synthesis       |    0.000 |       0.000 |
+| procedure_how_to          |    0.600 |       0.667 |
+| unanswerable_out_of_scope |      n/a |       1.000 |
 
 Per-bucket rows with `should_abstain=true` and `abstained=true` are excluded to avoid false negatives.
 
 ### Per-Difficulty Hit@k (balanced profile)
 
 | Difficulty | Hit@k |
-|---|---:|
-| medium | 0.655 |
-| hard | 0.154 |
+| ---------- | ----: |
+| medium     | 0.655 |
+| hard       | 0.154 |
 
 ### Abstain Subset
 
-| Profile | Required | TP | FP | FN | Precision | Recall |
-|---|---:|---:|---:|---:|---:|---:|
-| balanced | 30 | 30 | 57 | 0 | 0.345 | 1.000 |
-| low_latency | 30 | 29 | 21 | 1 | 0.580 | 0.967 |
+| Profile     | Required |  TP |  FP |  FN | Precision | Recall |
+| ----------- | -------: | --: | --: | --: | --------: | -----: |
+| balanced    |       30 |  30 |  57 |   0 |     0.345 |  1.000 |
+| low_latency |       30 |  29 |  21 |   1 |     0.580 |  0.967 |
 
 ### Citation Precision by Source Type (balanced / low_latency)
 
 | Source Type | balanced | low_latency |
-|---|---:|---:|
-| web | 0.744 | 0.651 |
-| project_doc | 0.000 | 0.000 |
-| pdf | 0.000 | 0.000 |
-| confluence | 0.000 | 0.000 |
+| ----------- | -------: | ----------: |
+| web         |    0.744 |       0.651 |
+| project_doc |    0.000 |       0.000 |
+| pdf         |    0.000 |       0.000 |
+| confluence  |    0.000 |       0.000 |
 
 ### Citation Scoring Coverage
 
-| Profile | Scored rows | Skipped rows |
-|---|---:|---:|
-| balanced | 33 | 87 |
-| low_latency | 69 | 51 |
+| Profile     | Scored rows | Skipped rows |
+| ----------- | ----------: | -----------: |
+| balanced    |          33 |           87 |
+| low_latency |          69 |           51 |
 
 ### Top False-Abstain Reasons (balanced profile)
 
-| Reason | Count |
-|---|---:|
-| Evidence is insufficient or unverifiable | 33 |
-| Synthesis parse failure after strict retry | 24 |
+| Reason                                     | Count |
+| ------------------------------------------ | ----: |
+| Evidence is insufficient or unverifiable   |    33 |
+| Synthesis parse failure after strict retry |    24 |
 
 Root cause: `qwen3.5:0.8b` at 4GB VRAM produces frequent synthesis parse failures; the stricter retry policy escalates these to abstention. Switching to `qwen3.5:4b` or higher eliminates the parse failure abstain path.
 
@@ -190,18 +191,19 @@ Root cause: `qwen3.5:0.8b` at 4GB VRAM produces frequent synthesis parse failure
 
 ### Baseline vs. Current Evidence
 
-| Metric | Historical Baseline | Current (balanced, 120q) |
-|---|---:|---:|
-| Hit@k | 0.410 | 0.383 |
-| MRR | 0.290 | 0.115 |
-| Citation precision | 0.520 | 0.309 |
-| Support coverage | 0.460 | 0.117 |
+| Metric             | Historical Baseline | Current (balanced, 120q) |
+| ------------------ | ------------------: | -----------------------: |
+| Hit@k              |               0.410 |                    0.383 |
+| MRR                |               0.290 |                    0.115 |
+| Citation precision |               0.520 |                    0.309 |
+| Support coverage   |               0.460 |                    0.117 |
 
 **Interpretation:** The regression vs. baseline reflects two factors: (1) dataset expanded from 20 to 120 questions with harder multi-hop and comparison buckets that the 0.8b model cannot consistently answer, and (2) `qwen3.5:0.8b` synthesis parse failures inflate false-abstain counts, suppressing citation and coverage scores. Adversarial abstain remains perfect at 1.000.
 
 ### Final-Metrics Publish Gates
 
 Before calling metrics "final" for the judge deck:
+
 - Abstain precision > 0.80
 - Abstain recall > 0.70
 - Dataset has 60+ rows
@@ -211,22 +213,23 @@ Before calling metrics "final" for the judge deck:
 
 Target bucket counts (`backend/eval/eval_matrix_target.json`):
 
-| Bucket | Target |
-|---|---:|
-| fact_lookup | 20 |
-| multi_hop_synthesis | 25 |
-| comparison_questions | 20 |
-| procedure_how_to | 15 |
-| edge_ambiguity | 10 |
-| unanswerable_out_of_scope | 20 |
-| adversarial_noisy | 10 |
-| **Total** | **120** |
+| Bucket                    |  Target |
+| ------------------------- | ------: |
+| fact_lookup               |      20 |
+| multi_hop_synthesis       |      25 |
+| comparison_questions      |      20 |
+| procedure_how_to          |      15 |
+| edge_ambiguity            |      10 |
+| unanswerable_out_of_scope |      20 |
+| adversarial_noisy         |      10 |
+| **Total**                 | **120** |
 
 Abstain-required minimum ratio: 15% (recommended 15–20%).
 
 ## Dataset Schema
 
 Each eval row supports:
+
 - `id`
 - `query`
 - `expected_answer`
@@ -245,14 +248,17 @@ Legacy fields `expected_sources` and `answerable` are normalized automatically b
 Manifest: `backend/resources/resource_pack.yaml`
 
 Ingestion reports:
+
 - `backend/resources/ingestion_report.json`
 - `backend/resources/ingestion_report.md`
 
-Last ingestion run (2026-03-27T07:34:27Z):
-- `documents_processed`: 2
-- `chunks_added`: 14
-- `skipped_duplicates`: 0
-- `success_count`: 2 / `failed_count`: 0
+Last ingestion run (2026-03-28T02:31:13Z):
+
+- `documents_processed: 35`
+- `chunks_added: 2126`
+- `skipped_duplicates: 38`
+- `success_count: 33`
+- `failed_count: 2`
 
 > Re-ingest with the full resource pack (`--use-pack`) to populate web + PDF + Confluence sources before running eval.
 
@@ -265,6 +271,7 @@ python backend/run_ingestion.py --use-pack --validate-resources --save-report ba
 ```
 
 Source priority order:
+
 1. Explicit CLI URLs/PDF directory
 2. Resource pack values when `--use-pack`
 3. Built-in defaults
@@ -278,23 +285,32 @@ python backend/scripts/save_resources.py --urls https://python.langchain.com/doc
 ## Dataset Build Workflow
 
 1. Ingest sources:
+
 ```bash
 make ingest-pack
 ```
+
 2. Generate candidate dataset rows from ingested section metadata:
+
 ```bash
 make eval-candidates
 ```
+
 3. Manually validate and curate gold labels (`expected_answer`, `must_cite_sources`, abstain flags).
 4. Prepare dev/hidden split:
+
 ```bash
 make eval-split
 ```
+
 5. Check matrix coverage:
+
 ```bash
 make eval-matrix-check
 ```
+
 6. Run profile evaluation on split datasets:
+
 ```bash
 make eval-dev
 make eval-hidden
@@ -363,6 +379,7 @@ Request:
 ```
 
 Response fields:
+
 - `answer`
 - `citations`
 - `confidence`
@@ -397,10 +414,13 @@ make test
 
 - Default runtime profile for live demo: `low_latency`.
 - Prewarm models and BM25 cache before judging:
+
 ```bash
 make demo-prewarm
 ```
+
 - Keep cached-answer backup artifact for network/runtime fallback:
+
 ```bash
 make demo-cache
 ```
