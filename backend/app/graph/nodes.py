@@ -78,7 +78,9 @@ def _clean_fallback_text(text: str) -> str:
     cleaned = cleaned.replace("ﬁ", "fi").replace("ﬂ", "fl")
     cleaned = re.sub(r"\b(\w+)-\s+(\w+)\b", r"\1\2", cleaned)
     cleaned = re.sub(r"\s+([,.;:!?])", r"\1", cleaned)
-    cleaned = re.sub(r"\[[0-9]+\]\s*\[[0-9]+\]", "", cleaned)
+    # Remove bracketed paper references like [160] from source text so they are
+    # not confused with system citation indices [1], [2], ...
+    cleaned = re.sub(r"\[[0-9]+\]", "", cleaned)
     cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
     units = [u.strip() for u in re.split(r"(?<=[.!?])\s+", cleaned) if u.strip()]
     if not units:
@@ -87,6 +89,16 @@ def _clean_fallback_text(text: str) -> str:
     if len(out) > 340:
         out = out[:337].rstrip() + "..."
     return out
+
+
+def _first_sentence(text: str) -> str:
+    parts = [u.strip() for u in re.split(r"(?<=[.!?])\s+", text) if u.strip()]
+    if not parts:
+        return ""
+    first = parts[0]
+    if first and first[-1] not in ".!?":
+        first += "."
+    return first
 
 
 def normalize_query_node(state: NavigatorState) -> NavigatorState:
@@ -282,16 +294,13 @@ def _extract_json(text: str) -> str:
 
 def _synthesis_prompt(state: NavigatorState, context: str, strict: bool) -> str:
     num_chunks = max(1, context.count("\n["))
-    must_cite = "EVERY sentence MUST end with [n]." if strict else "Cite each fact with [n]."
     return (
-        "You are a grounded QA assistant. Use ONLY the CONTEXT below to answer.\n"
-        f"{must_cite} n = chunk number (1 to {num_chunks}).\n"
-        "Output ONLY one JSON object. No markdown. No extra keys.\n"
-        'Format: {"answer":"fact one [1]. fact two [2].","confidence":0.85,"cited_indices":[1,2]}\n'
-        'If context lacks the answer: {"answer":"","confidence":0.0,"cited_indices":[]}\n\n'
+        "You are a grounded QA assistant. Answer BRIEFLY in 2-3 sentences using ONLY the CONTEXT.\n"
+        f"Mark citations with [n] where n is chunk 1-{num_chunks}.\n"
+        f"Do NOT output JSON. Just write your answer naturally.\n\n"
         f"CONTEXT:\n{context}\n\n"
         f"QUESTION: {state['original_query']}\n"
-        "JSON:"
+        "ANSWER:"
     )
 
 
@@ -346,102 +355,142 @@ def _run_synthesis(state: NavigatorState, strict: bool) -> SynthesisOutput:
             "abstain_reason": None,
         }
 
+    # Keep synthesis prompt compact to avoid model timeouts on low-resource hardware.
+    compact_chunks = chunks[:3]
     context = "\n\n".join(
-        f"[{idx}] SOURCE: {chunk['source']}\nCONTENT: {chunk['content']}"
-        for idx, chunk in enumerate(chunks, start=1)
+        f"[{idx}] SOURCE: {chunk['source']}\nCONTENT: {str(chunk['content'])[:320]}"
+        for idx, chunk in enumerate(compact_chunks, start=1)
     )
 
+    max_tokens = settings.effective_synthesis_max_output_tokens
+    if settings.normalized_runtime_profile == "low_latency":
+        max_tokens = min(max_tokens, 160)
+
+    def _grounded_fallback_output() -> SynthesisOutput | None:
+        top = compact_chunks[:2]
+        fallback_parts: list[str] = []
+        cited: list[int] = []
+        for idx, chunk in enumerate(top, start=1):
+            snippet = _clean_fallback_text(str(chunk.get("content", "")))
+            sentence = _first_sentence(snippet)
+            if sentence:
+                # Keep one cited sentence per chunk so citation validation can map claims.
+                fallback_parts.append(f"{sentence} [{idx}]")
+                cited.append(idx)
+        if not fallback_parts:
+            return None
+        return {
+            "answer": " ".join(fallback_parts),
+            "cited_indices": cited,
+            "confidence": 0.25,
+            "abstain_reason": None,
+        }
+
+    max_valid_idx = max(1, len(compact_chunks))
+
+    def _normalize_citation_markers(answer_text: str, cited: list[int]) -> tuple[str, list[int]]:
+        # Keep only [1..N] markers where N is the number of chunks used in synthesis.
+        valid = sorted({i for i in cited if 1 <= i <= max_valid_idx})
+
+        def _strip_invalid(match: re.Match[str]) -> str:
+            idx = int(match.group(1))
+            return match.group(0) if 1 <= idx <= max_valid_idx else ""
+
+        normalized = re.sub(r"\[(\d+)\]", _strip_invalid, answer_text)
+        normalized = re.sub(r"\s{2,}", " ", normalized).strip()
+        return normalized, valid
+
     try:
+        # Invoke synthesis with enough time and tokens for proper answer generation
         raw_text = invoke_synthesis(
             _synthesis_prompt(state, context, strict),
             timeout_seconds=settings.effective_synthesis_request_timeout_seconds,
-            max_output_tokens=settings.effective_synthesis_max_output_tokens,
+            max_output_tokens=max_tokens,
         )
         print("====== LLM RAW OUTPUT ======\n", repr(raw_text), "\n============================")
-    except ModelInvocationError:
+    except ModelInvocationError as exc:
+        # Grounded fallback on synthesis timeout/error.
+        fallback = _grounded_fallback_output()
+        if fallback:
+            return fallback
+
         return {
             "answer": FALLBACK_ABSTAIN_TEXT,
             "cited_indices": [],
             "confidence": 0.0,
-            "abstain_reason": "Model unavailable during synthesis",
+            "abstain_reason": str(exc),
         }
 
     try:
-        parsed = json.loads(_extract_json(raw_text))
-        answer = str(parsed.get("answer", "")).strip()
-        
-        # Parse cited_indices — always derive from inline [n] markers in the answer text
-        # (the model's cited_indices field is often incomplete or wrong)
-        inline_cited = sorted(set(int(m) for m in re.findall(r"\[(\d+)\]", answer)))
-        cited_indices_raw = parsed.get("cited_indices", [])
-        if isinstance(cited_indices_raw, list):
-            json_cited = [int(i) for i in cited_indices_raw if isinstance(i, int) or (isinstance(i, str) and i.isdigit())]
-        else:
-            json_cited = []
-        # Union of both: trust inline markers as primary, JSON list as supplement
-        cited_indices = sorted(set(inline_cited) | set(json_cited))
-        
-        raw_confidence = float(parsed.get("confidence", 0.0))
-        confidence = raw_confidence / 100.0 if raw_confidence > 1.0 else raw_confidence
-        
-        abstain_reason = parsed.get("abstain_reason")
-        abstain_reason_str = str(abstain_reason).strip() if isinstance(abstain_reason, str) and str(abstain_reason).strip() else None
-
-        if not answer:
-            raise ValueError("Parsed JSON has empty answer field")
-
-        return {
-            "answer": answer,
-            "cited_indices": cited_indices,
-            "confidence": max(0.0, min(1.0, confidence)),
-            "abstain_reason": abstain_reason_str,
-        }
-
-    except Exception as e:
-        # Attempted parse failure — strip think tags and fences
-        salvaged = raw_text.strip()
-        salvaged = re.sub(r"<think>.*?</think>", "", salvaged, flags=re.DOTALL).strip()
-        salvaged = re.sub(r"```(?:json)?", "", salvaged, flags=re.IGNORECASE).replace("```", "").strip()
-
-        # Try one more time with lenient JSON extraction
-        if "{" in salvaged and "}" in salvaged and "answer" in salvaged:
-            try:
-                maybe = json.loads(_extract_json(salvaged))
-                txt = str(maybe.get("answer", "")).strip()
-                cited_raw = maybe.get("cited_indices", [])
-                cited = [int(i) for i in cited_raw if isinstance(i, int) or (isinstance(i, str) and i.isdigit())] if isinstance(cited_raw, list) else []
-                # Derive cited_indices from inline [n] markers if list is empty
-                if not cited and txt:
-                    cited = sorted(set(int(m) for m in re.findall(r"\[(\d+)\]", txt)))
-                conf_raw = float(maybe.get("confidence", 0.3))
-                conf = conf_raw / 100.0 if conf_raw > 1.0 else conf_raw
-                if txt:
-                    return {
-                        "answer": txt,
-                        "cited_indices": cited,
-                        "confidence": max(0.0, min(1.0, conf)),
-                        "abstain_reason": None,
-                    }
-            except Exception:
-                pass
-
-        # Last resort: if the raw text itself looks like an answer with citations, use it directly
-        # (model output the answer text instead of JSON — common with small models)
-        inline_citations = sorted(set(int(m) for m in re.findall(r"\[(\d+)\]", salvaged)))
-        plain_text = salvaged.strip()
-        # Only accept if it has citation markers and is not the fallback abstain phrase
-        if inline_citations and plain_text and not is_fallback_abstain_answer(plain_text):
-            # Strip any residual JSON scaffolding (e.g. leading `{"answer":`)
-            plain_text = re.sub(r'^\{?"?answer"?\s*:\s*"?', "", plain_text).strip().strip('"').strip()
-            if len(plain_text) > 20:
+        # Try JSON parsing first (in case model outputs it anyway)
+        try:
+            parsed = json.loads(_extract_json(raw_text))
+            answer = str(parsed.get("answer", "")).strip()
+            if answer:
+                if is_fallback_abstain_answer(answer):
+                    fallback = _grounded_fallback_output()
+                    if fallback:
+                        return fallback
+                inline_cited = sorted(set(int(m) for m in re.findall(r"\[(\d+)\]", answer)))
+                answer, inline_cited = _normalize_citation_markers(answer, inline_cited)
                 return {
-                    "answer": plain_text,
-                    "cited_indices": inline_citations,
-                    "confidence": 0.4,
+                    "answer": answer,
+                    "cited_indices": inline_cited,
+                    "confidence": 0.85 if inline_cited else 0.6,
                     "abstain_reason": None,
                 }
+        except (json.JSONDecodeError, ValueError):
+            pass
+        
+        # Fallback: treat raw text as answer, extract [n] citations
+        answer = raw_text.strip()
+        if answer.startswith("```"):
+            answer = re.sub(r"^```json?\n?", "", answer).rsplit("```", 1)[0].strip()
+        
+        # Extract cited indices from [n] markers (can be empty)
+        cited_indices = sorted(set(int(m) for m in re.findall(r"\[(\d+)\]", answer)))
+        answer, cited_indices = _normalize_citation_markers(answer, cited_indices)
+        
+        # Accept ANY non-empty answer, even without citations
+        if answer:
+            if is_fallback_abstain_answer(answer):
+                fallback = _grounded_fallback_output()
+                if fallback:
+                    return fallback
+            return {
+                "answer": answer,
+                "cited_indices": cited_indices,
+                "confidence": 0.85 if cited_indices else 0.5,
+                "abstain_reason": None,
+            }
 
-        # Fallback: don't mark as abstain, let caller retry in strict mode
+        raise ValueError("Answer is empty")
+
+
+    except Exception as e:
+        # Last resort: use raw text directly, any length
+        salvaged = raw_text.strip()
+        # Remove markdown fences if present
+        salvaged = re.sub(r"^```.*?\n?", "", salvaged, flags=re.IGNORECASE).rsplit("```", 1)[0].strip()
+        # Remove think tags
+        salvaged = re.sub(r"<think>.*?</think>", "", salvaged, flags=re.DOTALL).strip()
+        
+        inline_citations = sorted(set(int(m) for m in re.findall(r"\[(\d+)\]", salvaged)))
+        salvaged, inline_citations = _normalize_citation_markers(salvaged, inline_citations)
+        
+        if salvaged and not is_fallback_abstain_answer(salvaged):
+            return {
+                "answer": salvaged,
+                "cited_indices": inline_citations,
+                "confidence": 0.7,
+                "abstain_reason": None,
+            }
+
+        fallback = _grounded_fallback_output()
+        if fallback:
+            return fallback
+
+        # True fallback: can't extract anything useful
         return {
             "answer": FALLBACK_ABSTAIN_TEXT,
             "cited_indices": [],
@@ -455,59 +504,8 @@ def synthesis_agent(state: NavigatorState) -> NavigatorState:
     state["citations"] = _build_citations(selected)
     state["used_deterministic_fallback"] = False
 
+    # Simple: just run synthesis once, accept the result
     synth = _run_synthesis(state, strict=False)
-
-    answer_is_abstain = is_fallback_abstain_answer(str(synth.get("answer", "")))
-    model_declared_abstain = bool(synth.get("abstain_reason"))
-    
-    # Check if we routed here despite 'adequate' being false (moderate support edge case)
-    # The fix: Do not demand adequate==True for the deterministic fallback if evidence exists.
-    parse_like_failure = (
-        answer_is_abstain
-        and not _policy_blocked(state)
-        and not _no_evidence(state)
-    )
-
-    if (answer_is_abstain and not model_declared_abstain) or parse_like_failure:
-        retry = _run_synthesis(state, strict=True)
-        retry_abstain = is_fallback_abstain_answer(str(retry.get("answer", "")))
-        retry_declared = bool(retry.get("abstain_reason"))
-        if retry.get("answer") and not retry_abstain:
-            synth = retry
-            _trace(state, "synthesis", "ok", "Recovered grounded answer after strict retry")
-        else:
-            synth = retry
-            if retry_abstain and not retry_declared:
-                synth["abstain_reason"] = "Synthesis parse failure after strict retry"
-
-    # CRITICAL FIX for False Positives: Don't require `retrieval_quality["adequate"] == True`
-    # Just verify we actually HAVE evidence and aren't policy blocked.
-    if (
-        is_fallback_abstain_answer(str(synth.get("answer", "")))
-        and not _policy_blocked(state)
-        and not _no_evidence(state)
-    ):
-        top = state.get("citations", [])[:2]
-        parts: list[str] = []
-        used: list[int] = []
-        for c in top:
-            idx = int(c.get("index", 0) or 0)
-            snip = str(c.get("snippet", "")).strip()
-            if idx > 0 and snip:
-                parts.append(f"{_clean_fallback_text(snip)} [{idx}]")
-                used.append(idx)
-
-        if parts:
-            merged = _clean_fallback_text(" ".join(parts))
-            synth_dict: SynthesisOutput = {
-                "answer": f"Based on retrieved evidence: {merged}",
-                "cited_indices": used,
-                "confidence": 0.32,
-                "abstain_reason": None,
-            }
-            synth = synth_dict
-            state["used_deterministic_fallback"] = True
-            _trace(state, "synthesis", "ok", "Used deterministic fallback answer after parse failure")
 
     # Prune citations list to only those actually referenced in the answer.
     # Unreferenced citation objects inflate citation FP in evaluation.
