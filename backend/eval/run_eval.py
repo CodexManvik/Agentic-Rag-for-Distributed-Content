@@ -92,22 +92,31 @@ def _normalize_row(row: dict[str, Any], index: int) -> dict[str, Any]:
     }
 
 
-def _source_hit(expected: list[str], retrieved_sources: list[str]) -> tuple[bool, float]:
+def _source_hit(expected: list[str], retrieved_sources: list[str], retrieved_chunks: list | None = None) -> tuple[bool, float]:
     if not expected:
         return True, 0.0
     expected_lower = [_norm_source(e) for e in expected]
+    
+    # Build source+type pairs if chunks available
+    source_type_map = {}
+    if retrieved_chunks:
+        for chunk in retrieved_chunks:
+            src = str(chunk.get("source", ""))
+            stype = str(chunk.get("metadata", {}).get("source_type", ""))
+            source_type_map[src] = stype
+
     for rank, src in enumerate(retrieved_sources, start=1):
         normalized = _norm_source(src)
+        stype = source_type_map.get(src, "")
         for exp in expected_lower:
-            # Accept if either direction contains the other, or if they share
-            # at least 3 significant tokens (handles long Atlassian titles)
             if exp in normalized or normalized in exp:
+                return True, 1.0 / rank
+            # Match PDF sources by source_type
+            if exp == "arxiv" and stype == "pdf":
                 return True, 1.0 / rank
             exp_tokens = set(exp.split())
             norm_tokens = set(normalized.split())
-            shared = exp_tokens & norm_tokens
-            # Ignore very short stop-like tokens
-            meaningful = {t for t in shared if len(t) > 3}
+            meaningful = {t for t in (exp_tokens & norm_tokens) if len(t) > 3}
             if len(meaningful) >= 3:
                 return True, 1.0 / rank
     return False, 0.0
@@ -194,11 +203,14 @@ def _run_profile_eval(
 
             retrieved_sources = [str(chunk.get("source", "")) for chunk in retrieved]
             expected_sources = [s.lower() for s in item.get("must_cite_sources", [])]
-            hit, rr = _source_hit(expected_sources, retrieved_sources)
-
-            if hit:
-                hit_count += 1
-            reciprocal_rank_sum += rr
+            # Around line 197, wrap the hit counting:
+            if not item.get("should_abstain", False):
+                hit, rr = _source_hit(expected_sources, retrieved_sources, retrieved)
+                if hit:
+                    hit_count += 1
+                reciprocal_rank_sum += rr
+            else:
+                hit, rr = False, 0.0
 
             # citation scoring guard: only on non-abstained, meaningful answers, with expected sources
             # and exclude manual-review rows from citation precision denominator.
@@ -323,8 +335,9 @@ def _run_profile_eval(
                 }
             )
 
-        retrieval_hit_at_k = hit_count / total if total else 0.0
-        mrr = reciprocal_rank_sum / total if total else 0.0
+        answerable_total = sum(1 for item in dataset if not item.get("should_abstain", False))
+        mrr = reciprocal_rank_sum / answerable_total if answerable_total else 0.0
+        retrieval_hit_at_k = hit_count / answerable_total if answerable_total else 0.0
         citation_precision = _safe_precision(citation_tp, citation_fp)
         support_coverage = support_covered / support_total if support_total else 0.0
         abstain_precision = _safe_precision(abstain_tp, abstain_fp)

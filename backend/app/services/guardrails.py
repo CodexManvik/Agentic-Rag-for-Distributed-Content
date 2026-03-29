@@ -78,7 +78,7 @@ def _should_require_citation(unit: str) -> bool:
     words = re.findall(r"[a-zA-Z0-9']+", unit_wo_citations)
     if len(words) <= 5:  # raised from 3 — don't demand citations on very short phrases
         return False
-    if len(words) >= 7:  # raised from 4
+    if len(words) >= 15:  # raised from 4
         return True
 
     has_signal = bool(

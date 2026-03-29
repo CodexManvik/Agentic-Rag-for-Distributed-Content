@@ -1,6 +1,6 @@
 {
-  "run_timestamp": "2026-03-27T10:09:21Z",
-  "resource_pack_name": "hackathon_public_pack_v1",
+  "run_timestamp": "2026-03-29T18:28:35Z",
+  "resource_pack_name": "hackathon_public_pack_v2",
   "resource_pack_path": "resources\\resource_pack.yaml",
   "processed_urls": [
     "https://support.atlassian.com/confluence-cloud/docs/make-a-space-public/",
@@ -9,22 +9,20 @@
     "https://support.atlassian.com/confluence-cloud/docs/how-secure-are-public-links/",
     "https://confluence.atlassian.com/doc/spaces-139459.html",
     "https://confluence.atlassian.com/doc/create-and-edit-pages-139459.html",
-    "https://confluence.atlassian.com/doc/use-confluence-cloud-139459.html",
-    "https://confluence.atlassian.com/doc/confluence-user-s-guide-139764.html",
-    "https://confluence.atlassian.com/doc/search-139678.html",
-    "https://docs.langchain.com/oss/python/langchain/rag",
-    "https://docs.langchain.com/oss/python/langchain/retrieval",
-    "https://python.langchain.com/docs/tutorials/rag/",
-    "https://python.langchain.com/docs/concepts/",
-    "https://python.langchain.com/docs/introduction/",
-    "https://www.atlassian.com/software/confluence/demo",
-    "https://www.langchain.com/retrieval",
-    "https://langchain-ai.github.io/langgraph/concepts/why-langgraph/",
-    "https://langchain-ai.github.io/langgraph/concepts/agentic_concepts/",
-    "https://langchain-ai.github.io/langgraph/concepts/low_level/",
-    "https://docs.langchain.com/oss/python/langchain/overview",
-    "https://ai.google.dev/gemini-api/docs",
-    "https://www.anthropic.com/engineering"
+    "https://github.com/langchain-ai/langchain/blob/master/README.md",
+    "https://github.com/langchain-ai/langchain/blob/master/libs/langchain/README.md",
+    "https://github.com/langchain-ai/langgraph/blob/main/README.md",
+    "https://github.com/langchain-ai/langgraph/blob/main/libs/langgraph/README.md",
+    "https://github.com/langchain-ai/langgraph/blob/main/examples/README.md",
+    "https://github.com/chroma-core/chroma/blob/main/README.md",
+    "https://github.com/facebookresearch/faiss/blob/main/README.md",
+    "https://github.com/UKPLab/sentence-transformers/blob/master/README.md",
+    "https://github.com/openai/openai-cookbook/blob/main/README.md",
+    "https://github.com/openai/openai-cookbook/blob/main/articles/related_resources.md",
+    "https://github.com/openai/openai-cookbook/blob/main/examples/Embedding_long_inputs.ipynb",
+    "https://github.com/run-llama/llama_index/blob/main/README.md",
+    "https://github.com/beir-cellar/beir/blob/main/README.md",
+    "https://github.com/explodinggradients/ragas/blob/main/README.md"
   ],
   "processed_pdfs": [
     "C:\\Project\\ideathon\\Hackathon_Problem_Statement_SmartKnowledgeNavigator.docx.pdf",
@@ -41,24 +39,16 @@
   ],
   "processed_docs": [
     "C:\\Project\\ideathon\\README.md",
-    "C:\\Project\\ideathon\\backend\\resources\\architecture_notes.md"
+    "C:\\Project\\ideathon\\backend\\resources\\architecture_notes.md",
+    "C:\\Project\\ideathon\\backend\\resources\\rag_concepts.md"
   ],
-  "documents_processed": 35,
-  "chunks_added": 3446,
-  "skipped_duplicates": 61,
-  "errors": [
-    {
-      "source": "https://confluence.atlassian.com/doc/confluence-user-s-guide-139764.html",
-      "error": "404 Client Error: Not Found for url: https://confluence.atlassian.com/doc/confluence-user-s-guide-139764.html"
-    },
-    {
-      "source": "https://confluence.atlassian.com/doc/search-139678.html",
-      "error": "404 Client Error: Not Found for url: https://confluence.atlassian.com/doc/search-139678.html"
-    }
-  ],
-  "total_duration_seconds": 358.711,
-  "success_count": 33,
-  "failed_count": 2,
+  "documents_processed": 34,
+  "chunks_added": 111,
+  "skipped_duplicates": 2247,
+  "errors": [],
+  "total_duration_seconds": 137.413,
+  "success_count": 34,
+  "failed_count": 0,
   "source_results": [
     {
       "source": "https://support.atlassian.com/confluence-cloud/docs/make-a-space-public/",
@@ -66,8 +56,8 @@
       "domain": "support.atlassian.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 20,
-      "skipped_duplicates": 2,
+      "chunks_added": 0,
+      "skipped_duplicates": 14,
       "error": null
     },
     {
@@ -76,8 +66,8 @@
       "domain": "support.atlassian.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 34,
-      "skipped_duplicates": 0,
+      "chunks_added": 0,
+      "skipped_duplicates": 21,
       "error": null
     },
     {
@@ -86,8 +76,8 @@
       "domain": "support.atlassian.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 37,
-      "skipped_duplicates": 0,
+      "chunks_added": 0,
+      "skipped_duplicates": 23,
       "error": null
     },
     {
@@ -96,8 +86,8 @@
       "domain": "support.atlassian.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 49,
-      "skipped_duplicates": 2,
+      "chunks_added": 0,
+      "skipped_duplicates": 36,
       "error": null
     },
     {
@@ -106,8 +96,8 @@
       "domain": "confluence.atlassian.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 12,
-      "skipped_duplicates": 0,
+      "chunks_added": 0,
+      "skipped_duplicates": 8,
       "error": null
     },
     {
@@ -117,63 +107,83 @@
       "status": "ok",
       "documents_processed": 1,
       "chunks_added": 0,
-      "skipped_duplicates": 12,
+      "skipped_duplicates": 8,
       "error": null
     },
     {
-      "source": "https://confluence.atlassian.com/doc/use-confluence-cloud-139459.html",
+      "source": "https://github.com/langchain-ai/langchain/blob/master/README.md",
       "source_type": "web",
-      "domain": "confluence.atlassian.com",
+      "domain": "github.com",
       "status": "ok",
       "documents_processed": 1,
       "chunks_added": 0,
-      "skipped_duplicates": 12,
+      "skipped_duplicates": 10,
       "error": null
     },
     {
-      "source": "https://confluence.atlassian.com/doc/confluence-user-s-guide-139764.html",
+      "source": "https://github.com/langchain-ai/langchain/blob/master/libs/langchain/README.md",
       "source_type": "web",
-      "domain": "confluence.atlassian.com",
-      "status": "failed",
-      "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 0,
-      "error": "404 Client Error: Not Found for url: https://confluence.atlassian.com/doc/confluence-user-s-guide-139764.html"
-    },
-    {
-      "source": "https://confluence.atlassian.com/doc/search-139678.html",
-      "source_type": "web",
-      "domain": "confluence.atlassian.com",
-      "status": "failed",
-      "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 0,
-      "error": "404 Client Error: Not Found for url: https://confluence.atlassian.com/doc/search-139678.html"
-    },
-    {
-      "source": "https://docs.langchain.com/oss/python/langchain/rag",
-      "source_type": "web",
-      "domain": "docs.langchain.com",
+      "domain": "github.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 18,
-      "skipped_duplicates": 0,
+      "chunks_added": 0,
+      "skipped_duplicates": 7,
       "error": null
     },
     {
-      "source": "https://docs.langchain.com/oss/python/langchain/retrieval",
+      "source": "https://github.com/langchain-ai/langgraph/blob/main/README.md",
       "source_type": "web",
-      "domain": "docs.langchain.com",
+      "domain": "github.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 8,
-      "skipped_duplicates": 1,
+      "chunks_added": 0,
+      "skipped_duplicates": 10,
       "error": null
     },
     {
-      "source": "https://python.langchain.com/docs/tutorials/rag/",
+      "source": "https://github.com/langchain-ai/langgraph/blob/main/libs/langgraph/README.md",
       "source_type": "web",
-      "domain": "python.langchain.com",
+      "domain": "github.com",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 0,
+      "skipped_duplicates": 9,
+      "error": null
+    },
+    {
+      "source": "https://github.com/langchain-ai/langgraph/blob/main/examples/README.md",
+      "source_type": "web",
+      "domain": "github.com",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 0,
+      "skipped_duplicates": 3,
+      "error": null
+    },
+    {
+      "source": "https://github.com/chroma-core/chroma/blob/main/README.md",
+      "source_type": "web",
+      "domain": "github.com",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 0,
+      "skipped_duplicates": 6,
+      "error": null
+    },
+    {
+      "source": "https://github.com/facebookresearch/faiss/blob/main/README.md",
+      "source_type": "web",
+      "domain": "github.com",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 0,
+      "skipped_duplicates": 15,
+      "error": null
+    },
+    {
+      "source": "https://github.com/UKPLab/sentence-transformers/blob/master/README.md",
+      "source_type": "web",
+      "domain": "github.com",
       "status": "ok",
       "documents_processed": 1,
       "chunks_added": 0,
@@ -181,103 +191,63 @@
       "error": null
     },
     {
-      "source": "https://python.langchain.com/docs/concepts/",
+      "source": "https://github.com/openai/openai-cookbook/blob/main/README.md",
       "source_type": "web",
-      "domain": "python.langchain.com",
+      "domain": "github.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 1,
+      "chunks_added": 0,
+      "skipped_duplicates": 3,
+      "error": null
+    },
+    {
+      "source": "https://github.com/openai/openai-cookbook/blob/main/articles/related_resources.md",
+      "source_type": "web",
+      "domain": "github.com",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 0,
+      "skipped_duplicates": 17,
+      "error": null
+    },
+    {
+      "source": "https://github.com/openai/openai-cookbook/blob/main/examples/Embedding_long_inputs.ipynb",
+      "source_type": "web",
+      "domain": "github.com",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 0,
       "skipped_duplicates": 2,
       "error": null
     },
     {
-      "source": "https://python.langchain.com/docs/introduction/",
+      "source": "https://github.com/run-llama/llama_index/blob/main/README.md",
       "source_type": "web",
-      "domain": "python.langchain.com",
+      "domain": "github.com",
       "status": "ok",
       "documents_processed": 1,
       "chunks_added": 0,
-      "skipped_duplicates": 3,
+      "skipped_duplicates": 19,
       "error": null
     },
     {
-      "source": "https://www.atlassian.com/software/confluence/demo",
+      "source": "https://github.com/beir-cellar/beir/blob/main/README.md",
       "source_type": "web",
-      "domain": "www.atlassian.com",
-      "status": "ok",
-      "documents_processed": 1,
-      "chunks_added": 4,
-      "skipped_duplicates": 0,
-      "error": null
-    },
-    {
-      "source": "https://www.langchain.com/retrieval",
-      "source_type": "web",
-      "domain": "www.langchain.com",
-      "status": "ok",
-      "documents_processed": 1,
-      "chunks_added": 5,
-      "skipped_duplicates": 0,
-      "error": null
-    },
-    {
-      "source": "https://langchain-ai.github.io/langgraph/concepts/why-langgraph/",
-      "source_type": "web",
-      "domain": "langchain-ai.github.io",
+      "domain": "github.com",
       "status": "ok",
       "documents_processed": 1,
       "chunks_added": 0,
-      "skipped_duplicates": 0,
+      "skipped_duplicates": 19,
       "error": null
     },
     {
-      "source": "https://langchain-ai.github.io/langgraph/concepts/agentic_concepts/",
+      "source": "https://github.com/explodinggradients/ragas/blob/main/README.md",
       "source_type": "web",
-      "domain": "langchain-ai.github.io",
+      "domain": "github.com",
       "status": "ok",
       "documents_processed": 1,
       "chunks_added": 0,
-      "skipped_duplicates": 0,
-      "error": null
-    },
-    {
-      "source": "https://langchain-ai.github.io/langgraph/concepts/low_level/",
-      "source_type": "web",
-      "domain": "langchain-ai.github.io",
-      "status": "ok",
-      "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 0,
-      "error": null
-    },
-    {
-      "source": "https://docs.langchain.com/oss/python/langchain/overview",
-      "source_type": "web",
-      "domain": "docs.langchain.com",
-      "status": "ok",
-      "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 3,
-      "error": null
-    },
-    {
-      "source": "https://ai.google.dev/gemini-api/docs",
-      "source_type": "web",
-      "domain": "ai.google.dev",
-      "status": "ok",
-      "documents_processed": 1,
-      "chunks_added": 10,
-      "skipped_duplicates": 0,
-      "error": null
-    },
-    {
-      "source": "https://www.anthropic.com/engineering",
-      "source_type": "web",
-      "domain": "www.anthropic.com",
-      "status": "ok",
-      "documents_processed": 1,
-      "chunks_added": 2,
-      "skipped_duplicates": 0,
+      "skipped_duplicates": 10,
       "error": null
     },
     {
@@ -286,8 +256,8 @@
       "domain": "local",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 14,
-      "skipped_duplicates": 0,
+      "chunks_added": 0,
+      "skipped_duplicates": 8,
       "error": null
     },
     {
@@ -296,8 +266,8 @@
       "domain": "arxiv.org",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 200,
-      "skipped_duplicates": 0,
+      "chunks_added": 0,
+      "skipped_duplicates": 124,
       "error": null
     },
     {
@@ -306,8 +276,8 @@
       "domain": "arxiv.org",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 313,
-      "skipped_duplicates": 0,
+      "chunks_added": 0,
+      "skipped_duplicates": 191,
       "error": null
     },
     {
@@ -316,8 +286,8 @@
       "domain": "arxiv.org",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 308,
-      "skipped_duplicates": 0,
+      "chunks_added": 0,
+      "skipped_duplicates": 191,
       "error": null
     },
     {
@@ -326,8 +296,8 @@
       "domain": "arxiv.org",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 1008,
-      "skipped_duplicates": 0,
+      "chunks_added": 0,
+      "skipped_duplicates": 618,
       "error": null
     },
     {
@@ -336,8 +306,8 @@
       "domain": "arxiv.org",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 396,
-      "skipped_duplicates": 0,
+      "chunks_added": 0,
+      "skipped_duplicates": 240,
       "error": null
     },
     {
@@ -346,8 +316,8 @@
       "domain": "arxiv.org",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 118,
-      "skipped_duplicates": 1,
+      "chunks_added": 0,
+      "skipped_duplicates": 74,
       "error": null
     },
     {
@@ -356,8 +326,8 @@
       "domain": "arxiv.org",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 195,
-      "skipped_duplicates": 0,
+      "chunks_added": 0,
+      "skipped_duplicates": 117,
       "error": null
     },
     {
@@ -366,8 +336,8 @@
       "domain": "arxiv.org",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 222,
-      "skipped_duplicates": 5,
+      "chunks_added": 0,
+      "skipped_duplicates": 141,
       "error": null
     },
     {
@@ -376,8 +346,8 @@
       "domain": "arxiv.org",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 132,
-      "skipped_duplicates": 0,
+      "chunks_added": 0,
+      "skipped_duplicates": 82,
       "error": null
     },
     {
@@ -386,8 +356,8 @@
       "domain": "arxiv.org",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 290,
-      "skipped_duplicates": 0,
+      "chunks_added": 0,
+      "skipped_duplicates": 169,
       "error": null
     },
     {
@@ -396,8 +366,8 @@
       "domain": "local",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 45,
-      "skipped_duplicates": 0,
+      "chunks_added": 71,
+      "skipped_duplicates": 6,
       "error": null
     },
     {
@@ -406,8 +376,18 @@
       "domain": "local",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 5,
+      "chunks_added": 40,
       "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "C:\\Project\\ideathon\\backend\\resources\\rag_concepts.md",
+      "source_type": "project_doc",
+      "domain": "local",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 0,
+      "skipped_duplicates": 28,
       "error": null
     }
   ]

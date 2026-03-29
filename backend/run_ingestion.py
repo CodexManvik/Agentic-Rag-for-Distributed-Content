@@ -15,8 +15,8 @@ from app.services.compliance import is_url_allowlisted
 
 DEFAULT_URLS: list[str] = [
     "https://python.langchain.com/docs/introduction/",
-    "https://python.langchain.com/docs/concepts/",
-    "https://python.langchain.com/docs/tutorials/rag/",
+    "https://docs.langchain.com/oss/python/langchain/overview",
+    "https://docs.langchain.com/oss/python/langchain/rag",
     "https://docs.langchain.com/oss/python/langchain/overview",
 ]
 

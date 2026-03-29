@@ -295,9 +295,12 @@ def _extract_json(text: str) -> str:
 def _synthesis_prompt(state: NavigatorState, context: str, strict: bool) -> str:
     num_chunks = max(1, context.count("\n["))
     return (
-        "You are a grounded QA assistant. Answer BRIEFLY in 2-3 sentences using ONLY the CONTEXT.\n"
-        f"Mark citations with [n] where n is chunk 1-{num_chunks}.\n"
-        f"Do NOT output JSON. Just write your answer naturally.\n\n"
+        "You are a grounded QA assistant. Answer using ONLY the CONTEXT below.\n"
+        f"You MUST end EVERY sentence with a citation like [1] or [2]. No exceptions.\n"
+        f"Example: 'RAG uses dense vectors for retrieval. [1] This improves accuracy. [2]'\n"
+        f"If the CONTEXT is not relevant to the question, output exactly: "
+        f"'I do not have sufficient information in the retrieved documents to answer this query.'\n"
+        f"Available chunks: 1 to {num_chunks}. Do NOT use any other numbers.\n\n"
         f"CONTEXT:\n{context}\n\n"
         f"QUESTION: {state['original_query']}\n"
         "ANSWER:"

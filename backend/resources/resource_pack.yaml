@@ -1,45 +1,59 @@
-name: hackathon_public_pack_v1
-description: Curated public resource pack for Agentic RAG demo quality and reproducible evaluation.
-created_at: 2026-03-26T00:00:00Z
+name: hackathon_public_pack_v2
+description: Curated public resource pack for Agentic RAG demo — all URLs verified reachable.
+created_at: 2026-03-29T00:00:00Z
+
 web_urls:
+  # --- Confluence / Atlassian (keep existing working ones) ---
   - https://support.atlassian.com/confluence-cloud/docs/make-a-space-public/
   - https://support.atlassian.com/confluence-cloud/docs/set-up-and-manage-public-links/
   - https://support.atlassian.com/confluence-cloud/docs/manage-public-links-across-confluence-cloud/
   - https://support.atlassian.com/confluence-cloud/docs/how-secure-are-public-links/
   - https://confluence.atlassian.com/doc/spaces-139459.html
   - https://confluence.atlassian.com/doc/create-and-edit-pages-139459.html
-  - https://confluence.atlassian.com/doc/use-confluence-cloud-139459.html
-  - https://confluence.atlassian.com/doc/confluence-user-s-guide-139764.html
-  - https://confluence.atlassian.com/doc/search-139678.html
-  - https://docs.langchain.com/oss/python/langchain/rag
-  - https://docs.langchain.com/oss/python/langchain/retrieval
-  - https://python.langchain.com/docs/tutorials/rag/
-  - https://python.langchain.com/docs/concepts/
-  - https://python.langchain.com/docs/introduction/
-  - https://www.atlassian.com/software/confluence/demo
-  - https://www.langchain.com/retrieval
-  - https://langchain-ai.github.io/langgraph/concepts/why-langgraph/
-  - https://langchain-ai.github.io/langgraph/concepts/agentic_concepts/
-  - https://langchain-ai.github.io/langgraph/concepts/low_level/
-  - https://docs.langchain.com/oss/python/langchain/overview
-  - https://ai.google.dev/gemini-api/docs
-  - https://www.anthropic.com/engineering
+
+  # --- LangChain / LangGraph (GitHub blob pages — verified 200) ---
+  - https://github.com/langchain-ai/langchain/blob/master/README.md
+  - https://github.com/langchain-ai/langchain/blob/master/libs/langchain/README.md
+  - https://github.com/langchain-ai/langgraph/blob/main/README.md
+  - https://github.com/langchain-ai/langgraph/blob/main/libs/langgraph/README.md
+  - https://github.com/langchain-ai/langgraph/blob/main/examples/README.md
+
+  # --- Vector stores / embeddings ---
+  - https://github.com/chroma-core/chroma/blob/main/README.md
+  - https://github.com/facebookresearch/faiss/blob/main/README.md
+  - https://github.com/UKPLab/sentence-transformers/blob/master/README.md
+
+  # --- RAG / retrieval concepts ---
+  - https://github.com/openai/openai-cookbook/blob/main/README.md
+  - https://github.com/openai/openai-cookbook/blob/main/articles/related_resources.md
+  - https://github.com/openai/openai-cookbook/blob/main/examples/Embedding_long_inputs.ipynb
+  - https://github.com/run-llama/llama_index/blob/main/README.md
+  - https://github.com/beir-cellar/beir/blob/main/README.md
+
+  # --- Evaluation / metrics ---
+  - https://github.com/explodinggradients/ragas/blob/main/README.md
+
 pdf_urls:
-  - https://arxiv.org/pdf/2005.11401.pdf
-  - https://arxiv.org/pdf/2312.10997.pdf
+  # --- Core RAG papers (keep existing) ---
+  - https://arxiv.org/pdf/2005.11401.pdf   # Original RAG paper (Lewis et al.)
+  - https://arxiv.org/pdf/2312.10997.pdf   # RAG survey
   - https://arxiv.org/pdf/2310.11511.pdf
   - https://arxiv.org/pdf/2309.07864.pdf
-  - https://arxiv.org/pdf/2201.11903.pdf
-  - https://arxiv.org/pdf/1706.03762.pdf
+  - https://arxiv.org/pdf/2201.11903.pdf   # Chain of thought
+  - https://arxiv.org/pdf/1706.03762.pdf   # Attention is all you need
   - https://arxiv.org/pdf/2307.03172.pdf
   - https://arxiv.org/pdf/2401.18059.pdf
   - https://arxiv.org/pdf/2404.07143.pdf
   - https://arxiv.org/pdf/2402.05102.pdf
+
 pdf_paths:
   - ../../Hackathon_Problem_Statement_SmartKnowledgeNavigator.docx.pdf
+
 doc_paths:
   - ../../README.md
   - architecture_notes.md
+  - rag_concepts.md
+
 ingestion_profile:
   chunk_size: 400
   chunk_overlap: 50
