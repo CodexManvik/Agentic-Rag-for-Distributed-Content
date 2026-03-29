@@ -3,6 +3,7 @@ import asyncio
 import json
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import StreamingResponse
 
 from app.config import settings
@@ -14,6 +15,13 @@ from app.services.vector_store import build_bm25_index
 
 app = FastAPI(title="Smart Knowledge Navigator API", version="0.1.0")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 _health_state: dict[str, str] = {"status": "starting", "reason": "initializing"}
 

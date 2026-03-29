@@ -8,3 +8,4 @@ chroma_data/
 .env
 backend/eval/__pycache__
 backend/app/api/__pycache__
+react-frontend/node_modules/
