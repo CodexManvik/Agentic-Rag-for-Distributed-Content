@@ -1,7 +1,9 @@
 import json
 import re
+import sys
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from app.config import settings
@@ -292,19 +294,53 @@ def _extract_json(text: str) -> str:
     return text
 
 
-def _synthesis_prompt(state: NavigatorState, context: str, strict: bool) -> str:
-    num_chunks = max(1, context.count("\n["))
-    return (
-        "You are a grounded QA assistant. Answer using ONLY the CONTEXT below.\n"
-        f"You MUST end EVERY sentence with a citation like [1] or [2]. No exceptions.\n"
-        f"Example: 'RAG uses dense vectors for retrieval. [1] This improves accuracy. [2]'\n"
-        f"If the CONTEXT is not relevant to the question, output exactly: "
-        f"'I do not have sufficient information in the retrieved documents to answer this query.'\n"
-        f"Available chunks: 1 to {num_chunks}. Do NOT use any other numbers.\n\n"
-        f"CONTEXT:\n{context}\n\n"
-        f"QUESTION: {state['original_query']}\n"
-        "ANSWER:"
+def _synthesis_prompt(state: NavigatorState, context: str, num_chunks: int, strict: bool) -> list[dict[str, str]]:
+    """Return a messages list (system + user) instead of a plain string.
+
+    llama3.2:3b reliably follows instructions when given a strong system role
+    and a clean user turn. A flat text prompt causes it to echo the FACTS block
+    instead of answering, because the small model treats the whole string as
+    continuation context to complete rather than an instruction to follow.
+    """
+    system = (
+        "You are a helpful assistant. Answer questions using ONLY the provided sources. "
+        "Be concise (2-3 sentences). Always end with a citation like [1] or [2]."
     )
+    user = (
+        f"Sources:\n{context}\n\n"
+        f"Question: {state['original_query']}\n\n"
+        f"Answer in 2-3 sentences using only the sources above. "
+        f"Cite with [1] or [2] (only numbers 1 to {num_chunks})."
+    )
+    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+
+_BIBLIOGRAPHY_PATTERN = re.compile(
+    r"(?:arXiv|arxiv)\s*preprint|"
+    r"\[\d{2,3}\]\s+[A-Z]|"
+    r"(?:doi|DOI):\s*10\.\d{4}|"
+    r"(?:pp\.|pages?)\s+\d+[-–]\d+",
+    re.IGNORECASE,
+)
+
+
+def _is_bibliography_chunk(content: str) -> bool:
+    return len(_BIBLIOGRAPHY_PATTERN.findall(content)) >= 2
+
+
+def _is_fragment_chunk(content: str) -> bool:
+    """Return True if the chunk starts mid-sentence (broken PDF boundary)."""
+    stripped = content.strip()
+    if not stripped:
+        return True
+    first_char = stripped[0]
+    # Starts with lowercase = mid-sentence fragment from a bad chunk boundary
+    return first_char.islower()
+
+
+def _content_fingerprint(text: str) -> str:
+    """First 80 chars of normalized text — used to detect near-duplicate chunks."""
+    return re.sub(r"\s+", " ", text.strip().lower())[:80]
 
 
 def _select_context_chunks(chunks: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -318,7 +354,8 @@ def _select_context_chunks(chunks: Sequence[Mapping[str, Any]]) -> list[dict[str
 
     ranked: list[dict[str, Any]] = []
     for chunk in chunks:
-        if str(chunk.get("content", "")).strip():
+        content = str(chunk.get("content", "")).strip()
+        if content and not _is_bibliography_chunk(content) and not _is_fragment_chunk(content):
             ranked.append(_clamp(chunk))
     ranked.sort(key=lambda c: float(c.get("score", 0.0)), reverse=True)
 
@@ -328,11 +365,14 @@ def _select_context_chunks(chunks: Sequence[Mapping[str, Any]]) -> list[dict[str
     chosen: list[dict[str, Any]] = []
     chosen_ids: set[int] = set()
     seen_sources: set[str] = set()
+    seen_fingerprints: set[str] = set()
 
     for chunk in ranked:
         source = str(chunk.get("source", "unknown"))
-        if source not in seen_sources:
+        fp = _content_fingerprint(str(chunk.get("content", "")))
+        if source not in seen_sources and fp not in seen_fingerprints:
             seen_sources.add(source)
+            seen_fingerprints.add(fp)
             chosen.append(chunk)
             chosen_ids.add(id(chunk))
         if len(chosen) >= limit:
@@ -341,7 +381,9 @@ def _select_context_chunks(chunks: Sequence[Mapping[str, Any]]) -> list[dict[str
     for chunk in ranked:
         if len(chosen) >= limit:
             break
-        if id(chunk) not in chosen_ids:
+        fp = _content_fingerprint(str(chunk.get("content", "")))
+        if id(chunk) not in chosen_ids and fp not in seen_fingerprints:
+            seen_fingerprints.add(fp)
             chosen.append(chunk)
             chosen_ids.add(id(chunk))
 
@@ -360,14 +402,19 @@ def _run_synthesis(state: NavigatorState, strict: bool) -> SynthesisOutput:
 
     # Keep synthesis prompt compact to avoid model timeouts on low-resource hardware.
     compact_chunks = chunks[:3]
+
+    def _clean_content(text: str) -> str:
+        cleaned = re.sub(r"\[\d{2,}\]", "", text)
+        return re.sub(r"\s{2,}", " ", cleaned).strip()
+
     context = "\n\n".join(
-        f"[{idx}] SOURCE: {chunk['source']}\nCONTENT: {str(chunk['content'])[:320]}"
+        f"[{idx}] SOURCE: {chunk['source']}\nCONTENT: {_clean_content(str(chunk['content']))[:320]}"
         for idx, chunk in enumerate(compact_chunks, start=1)
     )
 
     max_tokens = settings.effective_synthesis_max_output_tokens
     if settings.normalized_runtime_profile == "low_latency":
-        max_tokens = min(max_tokens, 160)
+        max_tokens = min(max_tokens, 280)
 
     def _grounded_fallback_output() -> SynthesisOutput | None:
         top = compact_chunks[:2]
@@ -406,11 +453,20 @@ def _run_synthesis(state: NavigatorState, strict: bool) -> SynthesisOutput:
     try:
         # Invoke synthesis with enough time and tokens for proper answer generation
         raw_text = invoke_synthesis(
-            _synthesis_prompt(state, context, strict),
+            _synthesis_prompt(state, context, len(compact_chunks), strict),
             timeout_seconds=settings.effective_synthesis_request_timeout_seconds,
             max_output_tokens=max_tokens,
         )
-        print("====== LLM RAW OUTPUT ======\n", repr(raw_text), "\n============================")
+        # Log raw LLM output to file — print() is unreliable inside uvicorn worker threads on Windows
+        _log_path = Path(__file__).resolve().parents[2] / "resources" / "llm_raw_output.log"
+        _log_path.parent.mkdir(parents=True, exist_ok=True)
+        with _log_path.open("a", encoding="utf-8") as _f:
+            _f.write(f"\n{'='*60}\n")
+            _f.write(f"[{datetime.now(timezone.utc).isoformat()}] QUERY: {state.get('original_query', '')}\n")
+            _f.write(f"RAW OUTPUT:\n{raw_text}\n")
+            _f.write(f"{'='*60}\n")
+        sys.stderr.write(f"[LLM] raw output written to {_log_path}\n")
+        sys.stderr.flush()
     except ModelInvocationError as exc:
         # Grounded fallback on synthesis timeout/error.
         fallback = _grounded_fallback_output()

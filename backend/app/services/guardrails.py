@@ -89,7 +89,11 @@ def _should_require_citation(unit: str) -> bool:
     return has_signal
 
 
-def validate_citations(answer: str, citation_count: int, citation_snippets: dict[int, str] | None = None) -> CitationValidationResult:
+def validate_citations(  # noqa: C901
+    answer: str,
+    citation_count: int,
+    citation_snippets: dict[int, str] | None = None,
+) -> CitationValidationResult:
     stripped = answer.strip()
     if not stripped:
         return {
@@ -102,35 +106,38 @@ def validate_citations(answer: str, citation_count: int, citation_snippets: dict
     if stripped.startswith("I do not have sufficient information"):
         return {"valid": True, "errors": [], "cited_indices": [], "error_categories": []}
 
-    sentences = _split_units(stripped)
     errors: list[str] = []
     categories: set[str] = set()
 
-    for sentence in sentences:
-        if not _should_require_citation(sentence):
-            continue
-        matches = CITATION_PATTERN.findall(sentence)
-        if not matches:
-            categories.add("missing_citation")
-            errors.append(f"missing_citation: {sentence[:80]}")
-            continue
-
-        if citation_snippets:
-            for raw_idx in matches:
-                idx = int(raw_idx)
-                chunk_text = citation_snippets.get(idx, "")
-                if not chunk_text:
-                    continue
-                if not citation_semantically_valid(sentence, chunk_text):
-                    # Soft warning only — small models paraphrase heavily so this is not a
-                    # reliable signal for hallucination. Don't add to hard errors.
-                    categories.add("weak_semantic_citation")
-
     all_indices = [int(idx) for idx in CITATION_PATTERN.findall(stripped)]
+    sentences = _split_units(stripped)
+
+    # Answer-level citation check: small models (3B) cannot reliably cite every
+    # sentence. Per-sentence enforcement caused near-100% false abstain rates on
+    # llama3.2:3b. We require at least one valid citation anywhere in the answer
+    # when it contains factual claims.
+    needs_citation = any(_should_require_citation(s) for s in sentences)
+    if needs_citation and not all_indices:
+        categories.add("missing_citation")
+        errors.append("missing_citation: answer contains factual claims but no citations at all")
+
+    # Out-of-range indices are still a hard error — the model hallucinated a [4]
+    # when only 3 chunks exist, for example.
     invalid = sorted({idx for idx in all_indices if idx < 1 or idx > citation_count})
     if invalid:
         categories.add("invalid_index")
         errors.append(f"invalid_index: {invalid}")
+
+    # Semantic overlap check — soft warning only, never blocks the answer.
+    # Small models paraphrase heavily so low overlap is not a reliable hallucination signal.
+    if citation_snippets and all_indices:
+        for sentence in sentences:
+            matches = CITATION_PATTERN.findall(sentence)
+            for raw_idx in matches:
+                idx = int(raw_idx)
+                chunk_text = citation_snippets.get(idx, "")
+                if chunk_text and not citation_semantically_valid(sentence, chunk_text):
+                    categories.add("weak_semantic_citation")
 
     return {
         "valid": len(errors) == 0,

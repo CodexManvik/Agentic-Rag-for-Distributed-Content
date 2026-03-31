@@ -49,48 +49,52 @@ def get_chat_model(max_output_tokens: int | None = None) -> ChatModel:
 
 
 def invoke_synthesis(
-    prompt: str,
+    prompt: str | list[dict[str, str]],
     timeout_seconds: float,
     max_output_tokens: int,
 ) -> str:
-    """Invoke synthesis using Ollama chat endpoint with robust stop controls.
+    """Invoke synthesis via ChatOllama using a proper chat messages list.
 
-    Uses /no_think and configurable stop sequences to reduce malformed JSON output.
+    Accepts either a plain string (legacy) or a list of {"role", "content"} dicts.
+    Uses a dedicated ChatOllama instance with num_ctx=2048 so the small model
+    doesn't time out trying to process a huge context window.
     """
-    url = f"{settings.ollama_base_url.rstrip('/')}/api/chat"
+    from langchain_core.messages import HumanMessage, SystemMessage
 
-    # Start with configured stop sequences, then add safe synthesis guards.
-    stop_sequences = list(settings.stop_sequences)
-    for s in ["</think>", "```json", "```", "\n\nHuman:", "\n\nUSER QUESTION:", "\n\nNote:", "\n\nPlease note"]:
-        if s not in stop_sequences:
-            stop_sequences.append(s)
+    _ensure_model_available(settings.ollama_chat_model)
 
-    options: dict[str, Any] = {
-        "temperature": settings.model_temperature,
-        "top_p": settings.model_top_p,
-        "top_k": settings.model_top_k,
-        "repeat_penalty": settings.model_repetition_penalty,
-        "num_predict": max_output_tokens,
-    }
-    if stop_sequences:
-        options["stop"] = stop_sequences
+    # Build a dedicated model instance with synthesis-specific settings.
+    # num_ctx=2048 keeps generation fast on small/CPU-bound hardware.
+    model = ChatOllama(
+        base_url=settings.ollama_base_url,
+        model=settings.ollama_chat_model,
+        temperature=settings.model_temperature,
+        top_p=settings.model_top_p,
+        top_k=settings.model_top_k,
+        repeat_penalty=settings.model_repetition_penalty,
+        num_predict=max_output_tokens,
+        num_ctx=2048,
+    )
 
-    payload = {
-        "model": settings.ollama_chat_model,
-        "messages": [
-            {"role": "system", "content": "/no_think"},
-            {"role": "user", "content": prompt},
-        ],
-        "stream": False,
-        "options": options,
-    }
+    # Convert messages list to LangChain message objects
+    if isinstance(prompt, list):
+        lc_messages: list[Any] = []
+        for msg in prompt:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            if role == "system":
+                lc_messages.append(SystemMessage(content=content))
+            else:
+                lc_messages.append(HumanMessage(content=content))
+        input_payload: Any = lc_messages
+    else:
+        input_payload = prompt
 
     try:
-        response = requests.post(url, json=payload, timeout=timeout_seconds)
-        response.raise_for_status()
-        data = response.json()
-        return str(data.get("message", {}).get("content", "")).strip()
-    except requests.Timeout as exc:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(model.invoke, input_payload)
+            result = future.result(timeout=timeout_seconds)
+    except FutureTimeoutError as exc:
         raise ModelInvocationError(
             f"Timed out during synthesis after {timeout_seconds:.1f}s"
         ) from exc
@@ -98,6 +102,17 @@ def invoke_synthesis(
         raise ModelInvocationError(
             f"Model invocation failed during synthesis: {exc}"
         ) from exc
+
+    # Extract text from LangChain response
+    if isinstance(result, str):
+        return result.strip()
+    content = getattr(result, "content", "")
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts = [item if isinstance(item, str) else item.get("text", "") for item in content]
+        return "\n".join(p for p in parts if p).strip()
+    return str(result).strip()
 
 
 def get_embedding_model() -> EmbeddingModel:

@@ -61,10 +61,10 @@ class Settings(BaseSettings):
     low_latency_reformulation_request_timeout_seconds: float = 6.0
     reformulation_max_output_tokens: int = 96
     low_latency_reformulation_max_output_tokens: int = 64
-    synthesis_request_timeout_seconds: float = 90.0
-    low_latency_synthesis_request_timeout_seconds: float = 40.0
-    synthesis_max_output_tokens: int = 400
-    low_latency_synthesis_max_output_tokens: int = 500
+    synthesis_request_timeout_seconds: float = 180.0
+    low_latency_synthesis_request_timeout_seconds: float = 180.0
+    synthesis_max_output_tokens: int = 256
+    low_latency_synthesis_max_output_tokens: int = 256
     model_stop_sequences: str = "</think>,```,\n\nHuman:,\n\nUSER QUESTION:"
     fail_fast_on_startup: bool = True
 
