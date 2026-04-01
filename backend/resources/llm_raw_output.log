@@ -22,3 +22,57 @@ I cannot provide information that could be used to create a large language model
 RAW OUTPUT:
 I'd be happy to help you with lunch. You can have chips, as you requested earlier [1]. However, I'm a large language model, I don't have personal preferences or physical abilities to bring you food. [1]
 ============================================================
+
+============================================================
+[2026-03-31T07:24:00.926950+00:00] QUERY: tell me about rag in detail
+RAW OUTPUT:
+RAG (retrieval-augmented generation) is a general-purpose fine-tuning approach that endows pre-trained parametric-memory generation models with a non-parametric memory, allowing for richer and more targeted context from the knowledge base [1]. RAG models include three types of retrieval augmentation processes: iterative retrieval, recursive retrieval, and others [2]. These processes enable models to reason and retrieve matching tokens over provided documents to find relevant information [3].
+============================================================
+
+============================================================
+[2026-03-31T07:28:50.582242+00:00] QUERY: what can you tell me about rag
+RAW OUTPUT:
+RAG (retrieval-augmented generation) is a general-purpose fine-tuning approach that endows pre-trained parametric-memory generation models with a non-parametric memory. This approach involves building RAG models where the parametric memory is a pre-trained seq2seq transformer, and the non-parametric memory is a dense vector [1]. The goal of RAG is to improve generation results by leveraging a retrieval mechanism [1].
+============================================================
+
+============================================================
+[2026-03-31T10:16:37.863481+00:00] QUERY: talk to me about rag and langgraph
+RAW OUTPUT:
+RAG (Retrieval-Augmented Generation) models use a combination of pre-trained parametric and non-parametric memory to generate text. This is achieved through a fine-tuning recipe that enables models to adapt to new tasks, as described in [3]. The RAG system also employs adaptive retrieval, which involves autonomously determining whether external knowledge retrieval is necessary [2].
+============================================================
+
+============================================================
+[2026-03-31T10:17:17.076155+00:00] QUERY: Compare LangGraph and standard chains with citations from multiple sources.
+RAW OUTPUT:
+LangGraph models agent workflows as directed graphs, whereas standard chains are linear sequences of LLM calls. This difference allows LangGraph to represent more complex workflows, whereas standard chains are limited to sequential processing [1]. In contrast, standard chains are more suitable for tasks that require a fixed sequence of steps, whereas LangGraph can handle more flexible workflows [2].
+============================================================
+
+============================================================
+[2026-03-31T10:19:05.509273+00:00] QUERY: tell me about langgraph
+RAW OUTPUT:
+I couldn't find any information about "langgraph" in the provided sources. The sources mention sentence-transformers, language models, and their applications, but not "langgraph" specifically.
+============================================================
+
+============================================================
+[2026-03-31T10:19:39.745697+00:00] QUERY: talk to me about language models
+RAW OUTPUT:
+Language models are a type of deep learning model that perform downstream tasks primarily via prompting, such as generating text or answering questions [3]. These models are often implemented as general-purpose models, while others produce embeddings for specific use cases, such as cross-encoder or sparse encoder models [1]. Effective language model performance requires careful prompt engineering, which can be learned through resources like the OpenAI Cookbook and Brex's Prompt Engineering Guide [2].
+============================================================
+
+============================================================
+[2026-03-31T10:27:45.208422+00:00] QUERY: what is the difference between vector search and BM25
+RAW OUTPUT:
+Vector search and BM25 are different approaches to information retrieval. Vector search is an approximate nearest neighbor (ANN) search technique that finds the k most similar vectors to a query vector, whereas BM25 is a traditional ranking algorithm that uses term frequencies and document frequencies to rank documents [1]. Vector search is specifically designed for high-dimensional embedding vectors, whereas BM25 is a general-purpose ranking algorithm [1].
+============================================================
+
+============================================================
+[2026-03-31T11:27:49.499212+00:00] QUERY: what is rag
+RAW OUTPUT:
+RAG stands for retrieval-augmented generation, a general-purpose fine-tuning approach that endows pre-trained parametric-memory generation models with a non-parametric memory. This approach involves building RAG models with a pre-trained seq2seq transformer as the parametric memory and a dense vector as the non-parametric memory [2]. RAG enables the system to autonomously determine whether external knowledge retrieval is beneficial [3].
+============================================================
+
+============================================================
+[2026-03-31T11:38:52.404123+00:00] QUERY: difference between vector search and BM25
+RAW OUTPUT:
+Vector search and BM25 are two different approaches to information retrieval. Vector search, as implemented by FAISS, focuses on finding the k most similar vectors to a query vector, whereas BM25 is a traditional ranking algorithm that retrieves documents based on their relevance to a query [1]. The primary difference lies in their query mechanisms, with vector search using similarity metrics and BM25 using term frequencies and document lengths [3].
+============================================================

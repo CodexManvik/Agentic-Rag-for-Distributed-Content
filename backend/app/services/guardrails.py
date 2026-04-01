@@ -113,13 +113,14 @@ def validate_citations(  # noqa: C901
     sentences = _split_units(stripped)
 
     # Answer-level citation check: small models (3B) cannot reliably cite every
-    # sentence. Per-sentence enforcement caused near-100% false abstain rates on
-    # llama3.2:3b. We require at least one valid citation anywhere in the answer
-    # when it contains factual claims.
+    # sentence, and sometimes produce a perfectly good answer without inline [n]
+    # markers. Treating this as a hard error caused correct answers to be abstained.
+    # Downgraded to a soft warning — it populates error_categories for observability
+    # but does NOT block the answer (not added to `errors`).
     needs_citation = any(_should_require_citation(s) for s in sentences)
     if needs_citation and not all_indices:
         categories.add("missing_citation")
-        errors.append("missing_citation: answer contains factual claims but no citations at all")
+        # Intentionally NOT appended to `errors` — soft warning only.
 
     # Out-of-range indices are still a hard error — the model hallucinated a [4]
     # when only 3 chunks exist, for example.
