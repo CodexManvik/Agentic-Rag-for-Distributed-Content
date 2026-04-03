@@ -1,6 +1,7 @@
-from functools import cached_property
+from functools import lru_cache
 from pathlib import Path
 
+from pydantic import computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,6 +42,8 @@ class Settings(BaseSettings):
 
     chunk_size: int = 700
     chunk_overlap: int = 100
+    chunk_size_tokens: int = 512  # Token-based chunk limit for LLM context awareness
+    token_encoding_model: str = "cl100k_base"  # OpenAI token encoding (cl100k_base for gpt-3.5+)
 
     runtime_profile: str = "low_latency"
     model_temperature: float = 0.0
@@ -77,6 +80,11 @@ class Settings(BaseSettings):
     )
     public_sources_only: bool = True
 
+    # CORS Configuration: Allow specific origins for security
+    # In development: http://localhost:3000 (React dev server)
+    # In production: configure via environment variables
+    allowed_origins: str = "http://localhost:3000,http://localhost:5173"  # React and Vite default ports
+    
     model_config = SettingsConfigDict(
         # Resolve .env relative to the repo root (two levels above this file),
         # regardless of the working directory uvicorn is started from.
@@ -84,9 +92,17 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
     )
 
-    @cached_property
+    @computed_field
+    @property
     def allowed_domains(self) -> list[str]:
+        """Parse comma-separated allowed source domains (pydantic cached)."""
         return [d.strip().lower() for d in self.allowed_source_domains.split(",") if d.strip()]
+
+    @computed_field
+    @property
+    def cors_allowed_origins(self) -> list[str]:
+        """Parse comma-separated allowed origins for CORS configuration (pydantic cached)."""
+        return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
 
     @property
     def stop_sequences(self) -> list[str]:
@@ -191,8 +207,10 @@ class Settings(BaseSettings):
             return self.low_latency_synthesis_max_output_tokens
         return self.synthesis_max_output_tokens
 
+    @computed_field
     @property
     def resolved_chroma_persist_directory(self) -> str:
+        """Resolve chroma persist directory to absolute path (pydantic cached)."""
         configured = Path(self.chroma_persist_directory)
         if configured.is_absolute():
             return str(configured)

@@ -1,16 +1,57 @@
+# Core Framework & Server
 fastapi==0.115.6
 uvicorn[standard]==0.32.1
+starlette==0.41.3
+
+# Configuration & Settings
+pydantic==2.10.3
+pydantic-settings==2.7.0
+
+# LLM & Graph Processing
 langgraph==0.2.62
 langchain==0.3.13
 langchain-ollama==0.2.3
 langchain-text-splitters==0.3.4
+
+# Vector Database & Search
 chromadb==0.5.23
-posthog<4
 rank-bm25==0.2.2
-pydantic-settings==2.7.0
-requests==2.32.3
+
+# Document Processing
 beautifulsoup4==4.12.3
-pypdf==5.1.0
+pymupdf==1.24.8
+requests==2.32.3
 PyYAML==6.0.2
+
+# NLP & Text Processing
+spacy==3.7.2
+tiktoken==0.7.0
+transformers==4.42.0
+sentence-transformers==3.0.1
+unidecode==1.4.0
+
+# Caching & Performance
+cachetools==5.5.0
+aiofiles==23.2.1
+# uvloop==0.19.0  # Unix/Linux only - not compatible with Windows
+
+# Logging & Monitoring
+loguru==0.7.2
+prometheus-client==0.19.0
+
+# Utilities
+posthog<4
+
+# Frontend
 streamlit==1.41.1
+
+# Testing
 pytest==8.3.4
+pytest-cov==4.1.0
+pytest-asyncio==0.23.2
+pytest-xdist==3.5.0
+hypothesis==6.92.1
+
+# Code Quality
+ruff==0.3.0
+mypy==1.9.0

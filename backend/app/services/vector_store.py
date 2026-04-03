@@ -1,17 +1,17 @@
 from collections.abc import Iterable
 from dataclasses import dataclass
-import logging
+from functools import lru_cache
 from math import isfinite
 import os
 import re
 from threading import Lock
 from typing import Any
 
+from cachetools import TTLCache, cached
+from loguru import logger
+
 os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
 os.environ.setdefault("CHROMA_TELEMETRY_IMPL", "")
-
-logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.ERROR)
-logging.getLogger("chromadb.telemetry").setLevel(logging.ERROR)
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
@@ -20,6 +20,15 @@ from rank_bm25 import BM25Okapi
 from app.config import settings
 from app.graph.state import RetrievedChunk, RetrievalQuality
 from app.services.llm import get_shared_chroma_embedding_function
+
+# Initialize spaCy for better tokenization and NLP
+try:
+    import spacy
+    _nlp = spacy.load("en_core_web_sm")
+    _SPACY_AVAILABLE = True
+except (ImportError, OSError):
+    _SPACY_AVAILABLE = False
+    logger.warning("spaCy not available. Falling back to regex tokenization. Run: python -m spacy download en_core_web_sm")
 
 
 @dataclass
@@ -31,14 +40,29 @@ class _BM25Cache:
 
 def _create_client() -> Any:
     persist_dir = settings.resolved_chroma_persist_directory
-    os.makedirs(persist_dir, exist_ok=True)
+    try:
+        os.makedirs(persist_dir, exist_ok=True)
+    except OSError as exc:
+        raise RuntimeError(
+            f"Failed to initialize ChromaDB: Cannot create or access directory '{persist_dir}'. "
+            f"Ensure the path exists and has proper read/write permissions. "
+            f"Original error: {exc}"
+        ) from exc
+    
     try:
         return chromadb.PersistentClient(
             path=persist_dir,
             settings=ChromaSettings(anonymized_telemetry=False),
         )
     except TypeError:
+        # Fallback for older chromadb versions that don't support ChromaSettings
         return chromadb.PersistentClient(path=persist_dir)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to initialize ChromaDB client at '{persist_dir}'. "
+            f"Verify the directory is accessible and ChromaDB is properly installed. "
+            f"Original error: {exc}"
+        ) from exc
 
 
 _client = _create_client()
@@ -111,7 +135,17 @@ def _normalize_distance(distance: float) -> float:
 
 
 def _tokenize(text: str) -> list[str]:
-    return re.findall(r"[a-z0-9]+", text.lower())
+    """Tokenize text with spaCy for better NLP handling, fallback to regex."""
+    if _SPACY_AVAILABLE:
+        doc = _nlp(text.lower())
+        # Filter out stopwords, punctuation, and short tokens
+        tokens = [
+            token.lemma_ for token in doc
+            if not token.is_stop and not token.is_punct and len(token.text) > 2
+        ]
+        return tokens if tokens else re.findall(r"[a-z0-9]+", text.lower())
+    else:
+        return re.findall(r"[a-z0-9]+", text.lower())
 
 
 def _token_set(text: str) -> set[str]:
@@ -127,9 +161,12 @@ def _jaccard(a: set[str], b: set[str]) -> float:
     return len(a & b) / u
 
 
+# Enhanced stopwords from spaCy's default set
 _STOPWORDS = {
     "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how", "in", "is", "it",
     "of", "on", "or", "that", "the", "to", "what", "when", "where", "who", "why", "with",
+    "this", "these", "those", "their", "them", "they", "than", "then", "may", "might", "must",
+    "should", "should", "would", "could", "can", "will", "has", "have", "had", "do", "does", "did",
 }
 
 _ENTITY_IGNORE = {
@@ -449,7 +486,8 @@ def assess_retrieval_adequacy(
         top_overlap_counts.append(_chunk_term_overlap_count(query_terms, str(chunk.get("content", ""))))
     top_relevance_ok = True if not query_terms else any(c >= settings.retrieval_chunk_min_term_overlap for c in top_overlap_counts)
 
-    adequate = (
+    # Standard adequacy criteria (strict checks)
+    strict_adequate = (
         max_score >= min_score
         and chunk_count >= settings.retrieval_min_chunks
         and source_diversity >= min_diversity
@@ -458,36 +496,49 @@ def assess_retrieval_adequacy(
         and top_relevance_ok
     )
 
+    # Determine adequacy with explicit branching for different profiles
+    adequate: bool
+    reason: str
+    
     if settings.normalized_runtime_profile == "low_latency":
-        moderate_support = (
-            max_score >= max(0.20, settings.retrieval_min_score * 0.7)
-            and chunk_count >= max(2, settings.retrieval_min_chunks)
-            and source_diversity >= 1
-        )
-        if moderate_support:
+        # Low-latency mode: use relaxed criteria
+        
+        # First, check if low_latency_skip_overlap_check allows bypass of strict checks
+        if (
+            settings.low_latency_skip_overlap_check
+            and max_score >= min_score
+            and chunk_count >= settings.retrieval_min_chunks
+        ):
             adequate = True
-            reason = "Adequate evidence (low-latency composite support)"
-        elif not adequate:
-            reason = "Evidence quality below threshold"
-
-    if (
-        settings.low_latency_skip_overlap_check
-        and settings.normalized_runtime_profile == "low_latency"
-        and max_score >= min_score
-        and chunk_count >= settings.retrieval_min_chunks
-    ):
-        adequate = True
-        reason = "Adequate evidence (low-latency override)"
-    elif adequate:
-        reason = "Adequate evidence"
-    elif (
-        term_overlap_ratio < settings.retrieval_query_overlap_min
-        or entity_overlap_ratio < settings.retrieval_entity_overlap_min
-        or not top_relevance_ok
-    ):
-        reason = "Weak topical match to query intent"
+            reason = "Adequate evidence (low-latency override)"
+        else:
+            # Fall back to moderate support criteria
+            moderate_support = (
+                max_score >= max(0.20, settings.retrieval_min_score * 0.7)
+                and chunk_count >= max(2, settings.retrieval_min_chunks)
+                and source_diversity >= 1
+            )
+            if moderate_support:
+                adequate = True
+                reason = "Adequate evidence (low-latency composite support)"
+            else:
+                adequate = False
+                reason = "Evidence quality below threshold"
     else:
-        reason = "Evidence quality below threshold"
+        # Balanced or high-quality mode: use strict criteria
+        if strict_adequate:
+            adequate = True
+            reason = "Adequate evidence"
+        elif (
+            term_overlap_ratio < settings.retrieval_query_overlap_min
+            or entity_overlap_ratio < settings.retrieval_entity_overlap_min
+            or not top_relevance_ok
+        ):
+            adequate = False
+            reason = "Weak topical match to query intent"
+        else:
+            adequate = False
+            reason = "Evidence quality below threshold"
 
     return {
         "max_score": max_score,

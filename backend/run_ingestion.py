@@ -11,6 +11,9 @@ import requests
 import yaml
 
 from app.services.compliance import is_url_allowlisted
+# Import ingestion services at module level to catch import errors early
+# (e.g., if ChromaDB or pymupdf not installed)
+from app.services.ingestion import ingest_pdf, ingest_text_file, ingest_web_page, reset_index
 
 
 DEFAULT_URLS: list[str] = [
@@ -264,8 +267,6 @@ def main() -> None:
         _write_report(report, args.save_report)
         print(f"Validation finished. valid={valid_count}, errors={len(errors)}")
         sys.exit(0 if len(errors) == 0 else 1)
-
-    from app.services.ingestion import ingest_pdf, ingest_text_file, ingest_web_page, reset_index
 
     if args.reset:
         print("Resetting index")

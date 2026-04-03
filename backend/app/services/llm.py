@@ -1,6 +1,7 @@
 from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from typing import Any, Protocol, cast
+import time
 
 import requests
 from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
@@ -144,8 +145,12 @@ def get_shared_chroma_embedding_function() -> EmbeddingFunction[Documents]:
     return ChromaLocalEmbeddingFunction(get_shared_embedding_model())
 
 
+_MODEL_CACHE_TTL_SECONDS = 30  # Refresh model list every 30 seconds to pick up newly pulled models
+
+
 @lru_cache(maxsize=1)
-def _available_models() -> set[str]:
+def _available_models_cached() -> tuple[set[str], float]:
+    """Cached version returning model set and timestamp."""
     tags_url = f"{settings.ollama_base_url.rstrip('/')}" + "/api/tags"
     try:
         response = requests.get(tags_url, timeout=10)
@@ -162,11 +167,34 @@ def _available_models() -> set[str]:
         name = model.get("name")
         if isinstance(name, str):
             names.add(name)
-    return names
+    return names, time.time()
+
+
+def _available_models() -> set[str]:
+    """Get available models with automatic TTL-based refresh (30s).
+    
+    This allows the server to detect newly pulled models without requiring a restart.
+    """
+    try:
+        models, cached_time = _available_models_cached()
+    except RuntimeError:
+        # If we haven't cached yet, let the exception propagate
+        _available_models_cached.cache_clear()
+        raise
+    
+    # If cache is fresh, return it
+    if time.time() - cached_time < _MODEL_CACHE_TTL_SECONDS:
+        return models
+    
+    # Cache expired: clear and refetch
+    _available_models_cached.cache_clear()
+    models, _ = _available_models_cached()
+    return models
 
 
 def refresh_model_registry() -> None:
-    _available_models.cache_clear()
+    """Clear the model cache to force a refresh on next access."""
+    _available_models_cached.cache_clear()
 
 
 def check_ollama_readiness() -> tuple[bool, str]:

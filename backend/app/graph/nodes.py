@@ -1,6 +1,7 @@
 import json
 import re
 import sys
+import threading
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,6 +14,9 @@ from app.services.policy import detect_policy_scope_violation
 from app.services.llm import ModelInvocationError, invoke_chat_with_timeout, invoke_synthesis
 from app.services.vector_store import assess_retrieval_adequacy, query_chunks
 
+
+# Global lock for thread-safe log file writes (prevents interleaved writes on Windows NTFS)
+_LOG_FILE_LOCK = threading.Lock()
 
 FALLBACK_ABSTAIN_TEXT = "I do not have sufficient information in the retrieved documents to answer this query."
 
@@ -134,18 +138,20 @@ def planning_agent(state: NavigatorState) -> NavigatorState:
         q_lower = base.lower()
         if any(k in q_lower for k in ["compare", "difference", "versus", "vs"]):
             # comparison: add each side as a standalone sub-query
+            # Use more robust splitting that avoids edge cases like empty strings
             parts = re.split(r"\b(?:compare|versus|vs|difference between|and)\b", q_lower, maxsplit=1)
             for p in parts:
                 p = p.strip()
-                if p and len(p) > 6:
+                # Only add if it's a meaningful non-empty string
+                if p and len(p) > 6 and not p.isspace():
                     expansions.append(p)
         elif any(k in q_lower for k in ["how", "steps", "procedure", "guide"]):
             expansions.append(f"{base} tutorial steps")
             expansions.append(f"{base} best practices")
         elif any(k in q_lower for k in ["what is", "define", "explain", "describe"]):
             # extract the noun phrase after the question word
-            noun = re.sub(r"^(what is|define|explain|describe)\s*", "", q_lower).strip()
-            if noun:
+            noun = re.sub(r"^(?:what\s+is|define|explain|describe)\s+", "", q_lower, flags=re.IGNORECASE).strip()
+            if noun and len(noun) > 3:  # Ensure noun is meaningful
                 expansions.append(f"{noun} overview")
                 expansions.append(f"{noun} use cases examples")
         else:
@@ -153,7 +159,9 @@ def planning_agent(state: NavigatorState) -> NavigatorState:
             expansions.append(f"{base} use cases")
             expansions.append(f"{base} guide")
 
-        state["sub_queries"] = _unique_queries(expansions)[: max(2, settings.planner_max_subqueries)]
+        # _unique_queries filters empty strings, so this is safe, but let's be explicit
+        filtered_expansions = [e for e in expansions if e and e.strip()]
+        state["sub_queries"] = _unique_queries(filtered_expansions)[: max(2, settings.planner_max_subqueries)]
         _trace(state, "planning", "ok", f"Low-latency path generated {len(state['sub_queries'])} sub-queries")
         return state
 
@@ -390,8 +398,9 @@ def _select_context_chunks(chunks: Sequence[Mapping[str, Any]]) -> list[dict[str
     return chosen
 
 
-def _run_synthesis(state: NavigatorState, strict: bool) -> SynthesisOutput:
-    chunks = _select_context_chunks(state["retrieved_chunks"])
+def _run_synthesis(state: NavigatorState, selected_chunks: list[dict[str, Any]], strict: bool) -> SynthesisOutput:
+    """Run synthesis with pre-selected chunks (avoids redundant chunk selection)."""
+    chunks = selected_chunks
     if not chunks:
         return {
             "answer": FALLBACK_ABSTAIN_TEXT,
@@ -457,14 +466,15 @@ def _run_synthesis(state: NavigatorState, strict: bool) -> SynthesisOutput:
             timeout_seconds=settings.effective_synthesis_request_timeout_seconds,
             max_output_tokens=max_tokens,
         )
-        # Log raw LLM output to file — print() is unreliable inside uvicorn worker threads on Windows
+        # Log raw LLM output to file — use lock to prevent interleaved writes from concurrent threads on Windows NTFS
         _log_path = Path(__file__).resolve().parents[2] / "resources" / "llm_raw_output.log"
         _log_path.parent.mkdir(parents=True, exist_ok=True)
-        with _log_path.open("a", encoding="utf-8") as _f:
-            _f.write(f"\n{'='*60}\n")
-            _f.write(f"[{datetime.now(timezone.utc).isoformat()}] QUERY: {state.get('original_query', '')}\n")
-            _f.write(f"RAW OUTPUT:\n{raw_text}\n")
-            _f.write(f"{'='*60}\n")
+        with _LOG_FILE_LOCK:
+            with _log_path.open("a", encoding="utf-8") as _f:
+                _f.write(f"\n{'='*60}\n")
+                _f.write(f"[{datetime.now(timezone.utc).isoformat()}] QUERY: {state.get('original_query', '')}\n")
+                _f.write(f"RAW OUTPUT:\n{raw_text}\n")
+                _f.write(f"{'='*60}\n")
         sys.stderr.write(f"[LLM] raw output written to {_log_path}\n")
         sys.stderr.flush()
     except ModelInvocationError as exc:
@@ -561,10 +571,11 @@ def _run_synthesis(state: NavigatorState, strict: bool) -> SynthesisOutput:
 def synthesis_agent(state: NavigatorState) -> NavigatorState:
     selected = _select_context_chunks(state["retrieved_chunks"])
     state["citations"] = _build_citations(selected)
+    state["_selected_context_chunks"] = selected  # Store for potential retries
     state["used_deterministic_fallback"] = False
 
-    # Simple: just run synthesis once, accept the result
-    synth = _run_synthesis(state, strict=False)
+    # Run synthesis once with the selected chunks (no re-selection inside _run_synthesis)
+    synth = _run_synthesis(state, selected, strict=False)
 
     # Prune citations list to only those actually referenced in the answer.
     # Unreferenced citation objects inflate citation FP in evaluation.
@@ -579,10 +590,23 @@ def synthesis_agent(state: NavigatorState) -> NavigatorState:
             old_to_new[old_idx] = new_idx
             c["index"] = new_idx
         
-        # REMAP ANSWER TEXT: [old] → [new]
+        # REMAP ANSWER TEXT: [old] → [new] using regex substitution to avoid conflicts
+        # This prevents substring matching issues (e.g., [2] corrupting [12])
         answer_text = str(synth.get("answer", ""))
-        for old_idx, new_idx in sorted(old_to_new.items(), reverse=True):
-            answer_text = answer_text.replace(f"[{old_idx}]", f"[{new_idx}]")
+        
+        def replace_citation(match: re.Match[str]) -> str:
+            old_idx_str = match.group(1)
+            try:
+                old_idx = int(old_idx_str)
+                new_idx = old_to_new.get(old_idx)
+                if new_idx is not None:
+                    return f"[{new_idx}]"
+            except (ValueError, KeyError):
+                pass
+            return match.group(0)
+        
+        # Replace all citation markers using a callback to handle all replacements atomically
+        answer_text = re.sub(r"\[(\d+)\]", replace_citation, answer_text)
         
         synth["answer"] = answer_text
         state["citations"] = kept_citations
@@ -672,7 +696,9 @@ def citation_validation_agent(state: NavigatorState) -> NavigatorState:
     state["validation_errors"] = validation["errors"]
     if state["validation_retries_used"] < settings.max_validation_retries:
         state["validation_retries_used"] += 1
-        strict = _run_synthesis(state, strict=True)
+        # Use pre-selected chunks from synthesis_agent to avoid re-selection
+        selected_chunks = state.get("_selected_context_chunks", [])
+        strict = _run_synthesis(state, selected_chunks, strict=True)
         state["synthesis_output"] = strict
         state["final_response"] = strict["answer"]
         state["cited_indices"] = strict["cited_indices"]
@@ -691,10 +717,21 @@ def citation_validation_agent(state: NavigatorState) -> NavigatorState:
                 old_to_new[old_idx] = new_idx
                 c["index"] = new_idx
             
-            # REMAP answer text to new indices
+            # REMAP answer text to new indices using regex to avoid substring conflicts
             answer_text = str(strict.get("answer", ""))
-            for old_idx, new_idx in sorted(old_to_new.items(), reverse=True):
-                answer_text = answer_text.replace(f"[{old_idx}]", f"[{new_idx}]")
+            
+            def replace_citation(match: re.Match[str]) -> str:
+                old_idx_str = match.group(1)
+                try:
+                    old_idx = int(old_idx_str)
+                    new_idx = old_to_new.get(old_idx)
+                    if new_idx is not None:
+                        return f"[{new_idx}]"
+                except (ValueError, KeyError):
+                    pass
+                return match.group(0)
+            
+            answer_text = re.sub(r"\[(\d+)\]", replace_citation, answer_text)
             
             strict["answer"] = answer_text
             state["citations"] = kept_citations

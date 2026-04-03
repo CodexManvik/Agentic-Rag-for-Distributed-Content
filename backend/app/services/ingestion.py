@@ -4,11 +4,15 @@ from datetime import datetime, timezone
 from hashlib import sha256
 from typing import Any, TypedDict, cast
 from urllib.parse import urlparse
+from functools import lru_cache
+import time
 
 import requests
 from bs4 import BeautifulSoup
 from chromadb.api.types import Metadata
 import fitz  # pymupdf — better text extraction than pypdf for academic PDFs
+import tiktoken
+from loguru import logger
 
 from app.config import settings
 from app.services.compliance import is_url_allowlisted
@@ -26,6 +30,7 @@ class IngestionStats(TypedDict):
 def reset_index() -> None:
     reset_collection()
     refresh_bm25_cache()
+    _existing_hashes_cached.cache_clear()
 
 
 def _timestamp() -> str:
@@ -37,7 +42,22 @@ def _content_hash(text: str) -> str:
     return sha256(normalized.encode("utf-8")).hexdigest()
 
 
-def _existing_hashes() -> set[str]:
+def _count_tokens(text: str, encoding: str = "cl100k_base") -> int:
+    """Count tokens in text using tiktoken (OpenAI token counting)."""
+    try:
+        enc = tiktoken.get_encoding(encoding)
+        return len(enc.encode(text))
+    except Exception as e:
+        logger.warning(f"Token counting failed: {e}. Estimating as {len(text.split())} tokens")
+        return len(text.split())  # Fallback to word count
+
+
+_HASH_CACHE_TTL_SECONDS = 60  # Cache hashes for 60 seconds to avoid repeated full scans
+
+
+@lru_cache(maxsize=1)
+def _existing_hashes_cached() -> tuple[set[str], float]:
+    """Cached version returning set of hashes and timestamp."""
     collection = get_collection()
     payload = collection.get(include=["metadatas"])
     metadatas = payload.get("metadatas", [])
@@ -47,6 +67,20 @@ def _existing_hashes() -> set[str]:
             value = item.get("content_hash")
             if isinstance(value, str):
                 hashes.add(value)
+    return hashes, time.time()
+
+
+def _existing_hashes() -> set[str]:
+    """Get existing content hashes with in-process caching to avoid O(n) queries on every chunk write."""
+    hashes, cached_time = _existing_hashes_cached()
+    
+    # If cache is still fresh, return it
+    if time.time() - cached_time < _HASH_CACHE_TTL_SECONDS:
+        return hashes
+    
+    # Cache expired: clear and refetch
+    _existing_hashes_cached.cache_clear()
+    hashes, _ = _existing_hashes_cached()
     return hashes
 
 
@@ -183,9 +217,56 @@ def _extract_pdf_sections(path: Path) -> list[tuple[int, int, str]]:
 
 
 def _is_fragment(text: str) -> bool:
-    """Return True if the text starts mid-sentence (broken chunk boundary)."""
+    """Return True if the text starts mid-sentence (broken chunk boundary).
+    
+    Avoids false positives on:
+    - Code examples (import, const, function, etc.)
+    - URLs (http://, ftp://, etc.)
+    - JSON or structured data
+    - List items or bullet points
+    - Acronyms and proper nouns (JSON, API, etc.)
+    """
     stripped = text.strip()
-    return bool(stripped) and stripped[0].islower()
+    if not stripped:
+        return False
+    
+    first_char = stripped[0]
+    
+    # Not a fragment if starts with uppercase, digit, or code-like pattern
+    if first_char.isupper() or first_char.isdigit():
+        return False
+    
+    # Not a fragment if starts with special characters
+    if first_char in "({[<\"'`@#$%&*-*/+=|\\:;.,/?!~":
+        return False
+    
+    # Not a fragment if starts with common code/markup keywords
+    code_keywords = (
+        "import ", "from ", "const ", "let ", "var ", "function ", "class ",
+        "def ", "async ", "await ", "return ", "throw ", "if ", "else ",
+        "for ", "while ", "try ", "catch ", "switch ", "case ",
+        "interface ", "type ", "enum ", "export ", "import{", "require(",
+        "package ", "namespace ", "using ", "public ", "private ", "protected ",
+        "abstract ", "static ", "final ", "extends ", "implements "
+    )
+    lower_text = stripped.lower()
+    if any(lower_text.startswith(kw) for kw in code_keywords):
+        return False
+    
+    # Not a fragment if starts with URL/URI patterns
+    url_prefixes = ("http://", "https://", "ftp://", "ftps://", "file://", "www.")
+    if any(lower_text.startswith(prefix) for prefix in url_prefixes):
+        return False
+    
+    # Not a fragment if starts with common acronyms (JSON, REST, API, etc.)
+    # These are often single/double char followed by space or common continuation
+    if len(stripped) > 1:
+        first_word = stripped.split()[0] if stripped.split() else ""
+        if len(first_word) <= 4 and first_word.isupper() and first_word.isalpha():
+            return False
+    
+    # True fragment: starts with lowercase letter and no special context
+    return first_char.islower()
 
 
 # Matches common patterns in academic reference sections

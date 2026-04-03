@@ -7,7 +7,8 @@ function App() {
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
 
-  const BACKEND_STREAM_URL = 'http://localhost:8000/chat/stream';
+  // Use environment variable or fall back to localhost for development
+  const BACKEND_STREAM_URL = import.meta.env.VITE_BACKEND_STREAM_URL || 'http://localhost:8000/chat/stream';
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -96,7 +97,7 @@ function App() {
       setMessages((prev) => {
         const newMsgs = [...prev];
         const active = { ...newMsgs[newMsgs.length - 1] };
-        active.content = active.content ? active.content + "\n\n?? Connection interrupted." : "?? Error connecting to server.";
+        active.content = active.content ? active.content + "\n\n❌ Connection interrupted." : "❌ Error connecting to server.";
         active.isError = true;
         active.isStreaming = false;
         newMsgs[newMsgs.length - 1] = active;
@@ -126,7 +127,7 @@ function App() {
       <div className="chat-history">
         {messages.length === 0 ? (
           <div className="empty-state">
-            <div className="hero-icon">??</div>
+            <div className="hero-icon">✨</div>
             <h2>How can I help you today?</h2>
           </div>
         ) : (
@@ -156,7 +157,7 @@ function App() {
                   </div>
                 )}
 
-                {msg.abstained && <div className="warn-box">?? System abstained due to insufficient evidence or policy guidelines.</div>}
+                {msg.abstained && <div className="warn-box">⚠️ System abstained due to insufficient evidence or policy guidelines.</div>}
                 
                 {msg.citations && msg.citations.length > 0 && (
                   <div className="citations-box">

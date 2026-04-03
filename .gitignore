@@ -12,3 +12,12 @@ backend/eval/__pycache__
 backend/app/api/__pycache__
 react-frontend/node_modules/
 .vscode/
+desktop-app/node_modules/
+desktop-app/dist/
+desktop-app/dist-electron/
+*.log
+desktop-app/.DS_Store
+desktop-app/.env
+desktop-app/.env.local
+desktop-app/.env.*.local
+
