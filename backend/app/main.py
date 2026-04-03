@@ -103,10 +103,13 @@ async def get_available_models() -> dict[str, list[str]]:
     """Get list of available models from Ollama."""
     logger.info("📨 /models endpoint called to fetch available models")
     try:
+        # Use asyncio.to_thread to avoid blocking the event loop with requests.get
         import requests
-        
-        # Call Ollama's API to list tags
-        response = requests.get(f"{settings.ollama_base_url}/api/tags", timeout=5)
+        response = await asyncio.to_thread(
+            requests.get,
+            f"{settings.ollama_base_url}/api/tags",
+            timeout=5
+        )
         if response.ok:
             data = response.json()
             models = [m.get("name", "") for m in data.get("models", [])]
@@ -125,7 +128,9 @@ async def get_available_models() -> dict[str, list[str]]:
 @app.post("/chat", response_model=ChatResponse)
 def chat(payload: ChatRequest) -> ChatResponse:
     start_time = time.time()
-    logger.info(f"📨 /chat endpoint called with query: {payload.query[:100]}...")
+    # Log endpoint call without exposing user query (PII risk)
+    query_hash = hash(payload.query) & 0x7FFFFFFF  # Deterministic hash for tracking
+    logger.info(f"📨 /chat endpoint called (query_hash={query_hash})")
     
     if _health_state["status"] != "ok":
         error_msg = f"Service unavailable: {_health_state['reason']}"
@@ -145,7 +150,8 @@ def chat(payload: ChatRequest) -> ChatResponse:
         # Record metrics
         rag_queries_total.labels(endpoint="/chat", status="success").inc()
         rag_query_latency.labels(endpoint="/chat").observe(latency)
-        retrieval_quality.labels(endpoint="/chat").observe(
+        # Use the correct histogram metric for retrieval quality
+        retrieval_quality_score.labels(endpoint="/chat").observe(
             retrieval_quality.score if hasattr(retrieval_quality, 'score') else 0.5
         )
         

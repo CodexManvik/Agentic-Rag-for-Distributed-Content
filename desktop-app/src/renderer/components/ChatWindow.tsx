@@ -123,7 +123,7 @@ export function ChatWindow() {
                   handleSendMessage()
                 }
               }}
-              placeholder="Type a message... (Shift+Enter for newline)"
+              placeholder="Type a message..."
               disabled={isLoading}
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
             />

@@ -1,10 +1,8 @@
-import { ipcRenderer } from 'electron'
-
 export interface FileMetadata {
   name: string
   size: number
   path: string
-  modified: Date
+  modified: string  // IPC serializes Dates as strings (ISO format)
 }
 
 export interface IpcApi {

@@ -73,12 +73,19 @@ ipcMain.handle('dialog:selectDirectory', async (_event) => {
 
 ipcMain.handle('file:readMetadata', async (_event, filePath: string) => {
   try {
-    const stat = await fs.promises.stat(filePath)
+    // Path validation to prevent directory traversal
+    const allowedBase = path.join(process.cwd(), 'documents')
+    const resolvedPath = path.resolve(filePath)
+    if (!resolvedPath.startsWith(allowedBase)) {
+      throw new Error('Access denied: path outside allowed directory')
+    }
+    
+    const stat = await fs.promises.stat(resolvedPath)
     return {
-      name: path.basename(filePath),
+      name: path.basename(resolvedPath),
       size: stat.size,
-      path: filePath,
-      modified: stat.mtime
+      path: resolvedPath,
+      modified: stat.mtime.toISOString()
     }
   } catch (error) {
     throw new Error(`Failed to read file: ${error}`)
@@ -89,9 +96,12 @@ ipcMain.handle('file:readMetadata', async (_event, filePath: string) => {
 ipcMain.handle('chat:getAvailableModels', async () => {
   try {
     console.log('[IPC] chat:getAvailableModels called - fetching from backend...')
-    // Fetch models dynamically from backend
+    // Fetch models dynamically from backend with timeout using AbortController
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 5000)
+    
     const response = await fetch('http://localhost:8000/models', {
-      timeout: 5000
+      signal: controller.signal
     })
     console.log(`[IPC] Backend /models response status: ${response.status}`)
     
@@ -101,6 +111,7 @@ ipcMain.handle('chat:getAvailableModels', async () => {
       throw new Error(`Backend error: ${response.status}`)
     }
     
+    clearTimeout(timeoutId)
     const data = await response.json()
     console.log('[IPC] Models fetched successfully:', data.models)
     return data.models || []
@@ -108,7 +119,7 @@ ipcMain.handle('chat:getAvailableModels', async () => {
     console.error('[IPC] Failed to fetch models from backend:', error)
     return [] // Return empty if backend unavailable
   }
-})
+}) as any
 
 ipcMain.handle('chat:sendMessage', async (
   _event,
@@ -118,11 +129,17 @@ ipcMain.handle('chat:sendMessage', async (
 ) => {
   try {
     // Backend expects: query field (not message), POST to /chat endpoint
+    // Add timeout using AbortController
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 30000) // 30s timeout for chat
+    
     const response = await fetch('http://localhost:8000/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query })
+      body: JSON.stringify({ query }),
+      signal: controller.signal
     })
+    clearTimeout(timeoutId)
 
     if (!response.ok) {
       throw new Error(`Backend error: ${response.status} ${response.statusText}`)

@@ -48,10 +48,16 @@ export function Message({ role, content, timestamp }: MessageProps) {
         {isBotMessage && (
           <div className="flex gap-2 mt-3">
             <button
-              onClick={() => {
-                navigator.clipboard.writeText(content)
-                setCopied(true)
-                setTimeout(() => setCopied(false), 2000)
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(content)
+                  setCopied(true)
+                  const timeoutId = setTimeout(() => setCopied(false), 2000)
+                  return () => clearTimeout(timeoutId)
+                } catch (err) {
+                  console.error('Failed to copy:', err)
+                  setCopied(false)
+                }
               }}
               className="flex items-center gap-1 px-2 py-1 text-xs rounded hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition"
             >

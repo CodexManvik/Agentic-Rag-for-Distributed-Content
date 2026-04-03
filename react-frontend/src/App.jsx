@@ -45,6 +45,10 @@ function App() {
 
       if (!response.ok) throw new Error(`Server error: ${response.statusText}`);
 
+      if (!response.body) {
+        throw new Error('Response body is empty (no-cors or opaque response)');
+      }
+
       const reader = response.body.getReader();
       const decoder = new TextDecoder("utf-8");
       let buffer = '';
@@ -163,10 +167,14 @@ function App() {
                   <div className="citations-box">
                     <strong>Sources:</strong>
                     <div className="citations-grid">
-                      {msg.citations.map((cite, i) => (
-                        <a key={i} href={cite.url || '#'} className="citation-pill" target="_blank" rel="noreferrer">
+                      {msg.citations.map((cite, i) => cite.url ? (
+                        <a key={i} href={cite.url} className="citation-pill" target="_blank" rel="noreferrer">
                           <span className="cite-idx">[{cite.index || i + 1}]</span> {cite.source_type || 'doc'}
                         </a>
+                      ) : (
+                        <span key={i} className="citation-pill">
+                          <span className="cite-idx">[{cite.index || i + 1}]</span> {cite.source_type || 'doc'}
+                        </span>
                       ))}
                     </div>
                   </div>
@@ -180,14 +188,17 @@ function App() {
 
       <div className="chat-input-wrapper">
         <form className="chat-input-form" onSubmit={sendMessage}>
+          <label htmlFor="chat-input" className="sr-only">Message Smart Knowledge Navigator</label>
           <input
+            id="chat-input"
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Message Smart Knowledge Navigator..."
             disabled={loading}
+            aria-label="Message input"
           />
-          <button type="submit" className={input.trim() && !loading ? 'active' : ''} disabled={loading || !input.trim()}>
+          <button type="submit" className={input.trim() && !loading ? 'active' : ''} disabled={loading || !input.trim()} aria-label="Send message">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.01 21L23 12L2.01 3L2 10L17 12L2 14L2.01 21Z" fill="currentColor"/></svg>
           </button>
         </form>

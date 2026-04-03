@@ -1,10 +1,8 @@
 import { Plus, MessageSquare, Trash2, ChevronDown } from 'lucide-react'
 import { useChat } from '@/renderer/context/ChatContext'
-import { useState } from 'react'
 
 export function Sidebar() {
   const { state, newSession, selectSession, deleteSession } = useChat()
-  const [hoveredId, setHoveredId] = useState<string | null>(null)
 
   const sortedSessions = [...state.sessions].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -35,8 +33,6 @@ export function Sidebar() {
           sortedSessions.map(session => (
             <div
               key={session.id}
-              onMouseEnter={() => setHoveredId(session.id)}
-              onMouseLeave={() => setHoveredId(null)}
               className={`group relative rounded-lg transition-all ${
                 state.currentSessionId === session.id
                   ? 'bg-slate-800 shadow-lg'
@@ -73,19 +69,18 @@ export function Sidebar() {
                 </div>
               </button>
 
-              {/* Delete button on hover */}
-              {hoveredId === session.id && (
-                <button
-                  onClick={e => {
-                    e.stopPropagation()
-                    deleteSession(session.id)
-                  }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition"
-                  title="Delete chat"
-                >
-                  <Trash2 size={16} />
-                </button>
-              )}
+              {/* Delete button - always accessible, visible on hover/focus */}
+              <button
+                onClick={e => {
+                  e.stopPropagation()
+                  deleteSession(session.id)
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition"
+                title="Delete chat"
+                aria-label="Delete this chat session"
+              >
+                <Trash2 size={16} />
+              </button>
             </div>
           ))
         )}

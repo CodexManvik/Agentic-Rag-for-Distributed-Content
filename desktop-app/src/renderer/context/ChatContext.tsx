@@ -83,7 +83,12 @@ const chatReducer = (state: ChatState, action: ChatAction): ChatState => {
       return { ...state, error: action.payload }
 
     case 'LOAD_SESSIONS':
-      return { ...state, sessions: action.payload }
+      const newSessions = action.payload
+      // Validate currentSessionId still exists in new sessions
+      const validSessionId = newSessions.some(s => s.id === state.currentSessionId)
+        ? state.currentSessionId
+        : newSessions[0]?.id || null
+      return { ...state, sessions: newSessions, currentSessionId: validSessionId }
 
     case 'SELECT_SESSION':
       return { ...state, currentSessionId: action.payload }

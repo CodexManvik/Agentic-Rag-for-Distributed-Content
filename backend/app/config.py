@@ -1,4 +1,3 @@
-from functools import lru_cache
 from pathlib import Path
 
 from pydantic import computed_field
@@ -95,13 +94,13 @@ class Settings(BaseSettings):
     @computed_field
     @property
     def allowed_domains(self) -> list[str]:
-        """Parse comma-separated allowed source domains (pydantic cached)."""
+        """Parse comma-separated allowed source domains. Computed on each access via @computed_field."""
         return [d.strip().lower() for d in self.allowed_source_domains.split(",") if d.strip()]
 
     @computed_field
     @property
     def cors_allowed_origins(self) -> list[str]:
-        """Parse comma-separated allowed origins for CORS configuration (pydantic cached)."""
+        """Parse comma-separated allowed origins for CORS configuration. Computed on each access via @computed_field."""
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
 
     @property

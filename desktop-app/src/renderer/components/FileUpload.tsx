@@ -5,11 +5,9 @@ import type { FileMetadata } from '@/types/ipc'
 interface FileQueueProps {
   files: FileMetadata[]
   onRemove: (path: string) => void
-  onAddClick: () => void
-  loading?: boolean
 }
 
-export function FileQueue({ files, onRemove, onAddClick, loading }: FileQueueProps) {
+export function FileQueue({ files, onRemove }: FileQueueProps) {
   if (files.length === 0) return null
 
   const formatFileSize = (bytes: number) => {
@@ -112,13 +110,17 @@ export function FileUpload({ onFilesSelected, disabled }: FileUploadProps) {
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || [])
-    const metadata = selectedFiles.map(file => ({
-      name: file.name,
-      size: file.size,
-      path: file.webkitRelativePath || file.name,
-      modified: new Date(file.lastModified)
-    }))
-    onFilesSelected(metadata)
+    // Apply same validation as handleDrop
+    const validFiles = selectedFiles.filter(isValidFile)
+    if (validFiles.length > 0) {
+      const metadata = validFiles.map(file => ({
+        name: file.name,
+        size: file.size,
+        path: file.webkitRelativePath || file.name,
+        modified: new Date(file.lastModified).toISOString()
+      }))
+      onFilesSelected(metadata)
+    }
     e.target.value = ''
   }
 
