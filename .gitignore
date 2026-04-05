@@ -22,3 +22,4 @@ desktop-app/.env
 desktop-app/.env.local
 desktop-app/.env.*.local
 backend/app/agents/__pycache__
+*/node_modules

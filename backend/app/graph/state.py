@@ -49,6 +49,7 @@ class SynthesisOutput(TypedDict):
 class NavigatorState(TypedDict):
     query: str
     original_query: str
+    selected_model: str  # Ollama model to use for this workflow execution
     sub_queries: list[str]
     retrieved_chunks: list[RetrievedChunk]
     final_response: str

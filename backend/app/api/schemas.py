@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 
 class ChatRequest(BaseModel):
     query: str = Field(min_length=3, max_length=2000)
+    model: str | None = Field(default=None, description="Optional Ollama model name. If not provided, uses configured default.")
 
 
 class Citation(BaseModel):
@@ -42,4 +43,4 @@ class ChatResponse(BaseModel):
     trace: list[TraceEvent]
     retrieval_quality: RetrievalQuality
     stage_timings: dict[str, float] = Field(default_factory=dict)
-    
+

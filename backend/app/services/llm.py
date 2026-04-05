@@ -33,12 +33,13 @@ class ModelInvocationError(RuntimeError):
     pass
 
 
-def get_chat_model(max_output_tokens: int | None = None) -> ChatModel:
-    _ensure_model_available(settings.ollama_chat_model)
+def get_chat_model(max_output_tokens: int | None = None, model_name: str | None = None) -> ChatModel:
+    chat_model = model_name or settings.ollama_chat_model
+    _ensure_model_available(chat_model)
     resolved_tokens = max_output_tokens or settings.effective_model_max_output_tokens
     ollama_kwargs: dict[str, Any] = {
         "base_url": settings.ollama_base_url,
-        "model": settings.ollama_chat_model,
+        "model": chat_model,
         "temperature": settings.model_temperature,
         "top_p": settings.model_top_p,
         "top_k": settings.model_top_k,
@@ -53,6 +54,7 @@ def invoke_synthesis(
     prompt: str | list[dict[str, str]],
     timeout_seconds: float,
     max_output_tokens: int,
+    model_name: str | None = None,
 ) -> str:
     """Invoke synthesis via ChatOllama using a proper chat messages list.
 
@@ -62,13 +64,14 @@ def invoke_synthesis(
     """
     from langchain_core.messages import HumanMessage, SystemMessage
 
-    _ensure_model_available(settings.ollama_chat_model)
+    chat_model = model_name or settings.ollama_chat_model
+    _ensure_model_available(chat_model)
 
     # Build a dedicated model instance with synthesis-specific settings.
     # num_ctx=2048 keeps generation fast on small/CPU-bound hardware.
     model = ChatOllama(
         base_url=settings.ollama_base_url,
-        model=settings.ollama_chat_model,
+        model=chat_model,
         temperature=settings.model_temperature,
         top_p=settings.model_top_p,
         top_k=settings.model_top_k,
@@ -246,11 +249,16 @@ def invoke_chat_with_timeout(
     purpose: str,
     timeout_seconds: float | None = None,
     max_output_tokens: int | None = None,
+    model_name: str | None = None,
 ) -> Any:
     timeout = timeout_seconds or settings.effective_model_request_timeout_seconds
     profile = settings.normalized_runtime_profile
     max_tokens = max_output_tokens or settings.effective_model_max_output_tokens
-    model = get_shared_chat_model(profile, max_tokens)
+    # If custom model specified, create instance directly; otherwise use cached
+    if model_name:
+        model = get_chat_model(max_tokens, model_name=model_name)
+    else:
+        model = get_shared_chat_model(profile, max_tokens)
 
     try:
         with ThreadPoolExecutor(max_workers=1) as executor:

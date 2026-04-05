@@ -224,10 +224,13 @@ def _append_stage_latency_log(query: str, state: NavigatorState) -> None:
         f.write(json.dumps(payload, ensure_ascii=True) + "\n")
 
 
-def run_workflow(query: str) -> NavigatorState:
+def run_workflow(query: str, model: str | None = None) -> NavigatorState:
+    from app.config import settings
+    selected_model = model or settings.ollama_chat_model
     initial_state: NavigatorState = {
         "query": query,
         "original_query": query,
+        "selected_model": selected_model,
         "sub_queries": [],
         "retrieved_chunks": [],
         "final_response": "",

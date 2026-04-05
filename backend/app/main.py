@@ -136,7 +136,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
     start_time = time.time()
     # Log endpoint call without exposing user query (PII risk)
     query_hash = hash(payload.query) & 0x7FFFFFFF  # Deterministic hash for tracking
-    logger.info(f"📨 /chat endpoint called (query_hash={query_hash})")
+    logger.info(f"📨 /chat endpoint called (query_hash={query_hash})" + (f" model: {payload.model}" if payload.model else ""))
     
     if _health_state["status"] != "ok":
         error_msg = f"Service unavailable: {_health_state['reason']}"
@@ -146,7 +146,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
 
     try:
         logger.info(f"🔄 Running workflow for query")
-        result = run_workflow(payload.query)
+        result = run_workflow(payload.query, model=payload.model)
         latency = time.time() - start_time
         
         citations = [Citation(**c) for c in result["citations"]]
@@ -188,8 +188,8 @@ def chat(payload: ChatRequest) -> ChatResponse:
 
 
 @app.get("/chat/stream")
-async def chat_stream(query: str) -> StreamingResponse:
-    logger.info(f"📨 /chat/stream endpoint called with query: {query[:100]}...")
+async def chat_stream(query: str, model: str | None = None) -> StreamingResponse:
+    logger.info(f"📨 /chat/stream endpoint called with query: {query[:100]}..." + (f" model: {model}" if model else ""))
     
     if _health_state["status"] != "ok":
         error_msg = f"Service unavailable: {_health_state['reason']}"
@@ -240,9 +240,9 @@ async def chat_stream(query: str) -> StreamingResponse:
                 "trace": [],
                 "stage_timings": {},
                 "stage_timestamps": {},
+                "selected_model": model or settings.ollama_chat_model,
             }
-
-            logger.info("🔄 Streaming workflow execution with astream")
+            logger.info(f"🔄 Streaming workflow execution with astream (model: {initial_state['selected_model']})")
             async for current_state in workflow.astream(initial_state):
                 if not isinstance(current_state, dict):
                     continue

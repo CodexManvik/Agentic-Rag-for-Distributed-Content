@@ -183,6 +183,7 @@ USER QUERY:
                 purpose="planning",
                 timeout_seconds=settings.effective_planner_request_timeout_seconds,
                 max_output_tokens=settings.effective_planner_max_output_tokens,
+                model_name=state.get("selected_model"),
             )
         )
     except ModelInvocationError as exc:
@@ -251,6 +252,7 @@ One line per query.
                 purpose="reformulation",
                 timeout_seconds=settings.effective_reformulation_request_timeout_seconds,
                 max_output_tokens=settings.effective_reformulation_max_output_tokens,
+                model_name=state.get("selected_model"),
             )
         )
     except ModelInvocationError as exc:
@@ -465,6 +467,7 @@ def _run_synthesis(state: NavigatorState, selected_chunks: list[dict[str, Any]],
             _synthesis_prompt(state, context, len(compact_chunks), strict),
             timeout_seconds=settings.effective_synthesis_request_timeout_seconds,
             max_output_tokens=max_tokens,
+            model_name=state.get("selected_model"),
         )
         # Log raw LLM output to file — use lock to prevent interleaved writes from concurrent threads on Windows NTFS
         _log_path = Path(__file__).resolve().parents[2] / "resources" / "llm_raw_output.log"
