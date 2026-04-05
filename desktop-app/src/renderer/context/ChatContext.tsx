@@ -6,6 +6,8 @@ export interface Message {
   content: string
   timestamp: Date
   files?: string[]
+  trace?: Array<Record<string, unknown>>
+  citations?: Array<Record<string, unknown>>
 }
 
 export interface ChatSession {

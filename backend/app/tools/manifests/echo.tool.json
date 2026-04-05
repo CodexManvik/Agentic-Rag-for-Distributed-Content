@@ -1,0 +1,6 @@
+{
+  "name": "echo",
+  "version": "1.0.0",
+  "description": "Echoes the input payload.",
+  "entrypoint": "app.tools.builtin.functions:echo"
+}

@@ -1,0 +1,17 @@
+{
+  "name": "finalize",
+  "version": "1.0.0",
+  "description": "Finalize response payload and state fields.",
+  "inputs": {
+    "query": { "type": "string", "required": true }
+  },
+  "outputs": {
+    "final_response": { "type": "string" },
+    "confidence": { "type": "number" },
+    "trace": { "type": "array" }
+  },
+  "execution": {
+    "type": "python",
+    "entrypoint": "app.graph.nodes:finalize_node"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "word_count_agent",
+  "version": "1.0.0",
+  "description": "Calls the local word_count tool on query text.",
+  "inputs": {
+    "query": { "type": "string", "required": true }
+  },
+  "outputs": {
+    "tool_result": { "type": "object" },
+    "trace": { "type": "array" }
+  },
+  "execution": {
+    "type": "tool_call",
+    "tool_name": "word_count",
+    "input_field": "query",
+    "output_field": "tool_result"
+  }
+}

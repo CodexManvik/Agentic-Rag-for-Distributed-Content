@@ -1,7 +1,9 @@
 import { ChevronDown } from 'lucide-react'
 import { useChat } from '@/renderer/context/ChatContext'
 import { useChat_API } from '@/renderer/hooks/useChat_API'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+
+const CANDIDATE_MODELS = ['qwen:4b', 'mistral', 'llama3.2', 'phi3:mini', 'gemma:2b']
 
 export function ModelSelector() {
   const { state, setModel } = useChat()
@@ -33,22 +35,31 @@ export function ModelSelector() {
 
       {isOpen && (
         <div className="absolute top-full mt-2 right-0 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-50 min-w-[200px] overflow-hidden">
-          {models.map(model => (
+          {CANDIDATE_MODELS.map(model => {
+            const available = models.includes(model)
+            return (
             <button
               key={model}
               onClick={() => {
-                setModel(model)
+                if (available) {
+                  setModel(model)
+                }
                 setIsOpen(false)
               }}
+              disabled={!available}
               className={`w-full text-left px-4 py-3 text-sm transition-colors ${
                 state.selectedModel === model
                   ? 'bg-blue-600 text-white font-medium'
-                  : 'text-slate-200 hover:bg-slate-700'
+                  : available
+                    ? 'text-slate-200 hover:bg-slate-700'
+                    : 'text-slate-500 bg-slate-900/40 cursor-not-allowed'
               }`}
             >
               {model}
+              {!available && ' (unavailable)'}
             </button>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

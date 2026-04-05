@@ -1,0 +1,18 @@
+{
+  "name": "citation_validation",
+  "version": "1.0.0",
+  "description": "Validate citation correctness in synthesized answer.",
+  "inputs": {
+    "citations": { "type": "array", "required": true },
+    "final_response": { "type": "string", "required": true }
+  },
+  "outputs": {
+    "abstained": { "type": "boolean" },
+    "validation_errors": { "type": "array" },
+    "trace": { "type": "array" }
+  },
+  "execution": {
+    "type": "python",
+    "entrypoint": "app.graph.nodes:citation_validation_agent"
+  }
+}

@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, cast
 import asyncio
 import json
 import time
@@ -12,7 +12,7 @@ from prometheus_client import Counter, Histogram, generate_latest
 
 from app.config import settings
 from app.api.schemas import ChatRequest, ChatResponse, Citation, RetrievalQuality, TraceEvent
-from app.graph.workflow import run_workflow
+from app.graph.workflow import run_workflow, workflow
 from app.graph.state import NavigatorState
 from app.services.llm import check_ollama_readiness
 from app.services.vector_store import build_bm25_index
@@ -125,6 +125,12 @@ async def get_available_models() -> dict[str, list[str]]:
         return {"models": [settings.ollama_chat_model]}
 
 
+@app.get("/api/models")
+async def get_available_models_api() -> dict[str, list[str]]:
+    """Phase 1 endpoint alias for model listing used by frontend."""
+    return await get_available_models()
+
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(payload: ChatRequest) -> ChatResponse:
     start_time = time.time()
@@ -151,9 +157,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
         rag_queries_total.labels(endpoint="/chat", status="success").inc()
         rag_query_latency.labels(endpoint="/chat").observe(latency)
         # Use the correct histogram metric for retrieval quality
-        retrieval_quality_score.labels(endpoint="/chat").observe(
-            retrieval_quality.score if hasattr(retrieval_quality, 'score') else 0.5
-        )
+        retrieval_quality_score.labels(endpoint="/chat").observe(retrieval_quality.max_score)
         
         logger.info(
             f"✓ /chat completed in {latency:.2f}s, "
@@ -183,9 +187,9 @@ def chat(payload: ChatRequest) -> ChatResponse:
         ) from exc
 
 
-@app.post("/chat/stream")
-async def chat_stream(payload: ChatRequest) -> StreamingResponse:
-    logger.info(f"📨 /chat/stream endpoint called with query: {payload.query[:100]}...")
+@app.get("/chat/stream")
+async def chat_stream(query: str) -> StreamingResponse:
+    logger.info(f"📨 /chat/stream endpoint called with query: {query[:100]}...")
     
     if _health_state["status"] != "ok":
         error_msg = f"Service unavailable: {_health_state['reason']}"
@@ -197,72 +201,147 @@ async def chat_stream(payload: ChatRequest) -> StreamingResponse:
         start_time = time.time()
         result: NavigatorState | None = None
         error_message: str | None = None
-        partial_answer = ""
-        task: asyncio.Task[Any] | None = None
+        emitted_answer = ""
+        emitted_trace_count = 0
+        emitted_trace_event = False
+        emitted_chunk_event = False
 
         try:
-            logger.info(f"🔄 Creating workflow task for streaming")
-            task = asyncio.create_task(asyncio.to_thread(run_workflow, payload.query))
-            yield f"data: {json.dumps({'type': 'status', 'message': 'planning and retrieval started'})}\n\n"
+            # Build initial workflow state (same shape used by run_workflow)
+            initial_state: NavigatorState = {
+                "query": query,
+                "original_query": query,
+                "sub_queries": [],
+                "retrieved_chunks": [],
+                "final_response": "",
+                "citations": [],
+                "retrieval_quality": {
+                    "max_score": 0.0,
+                    "avg_score": 0.0,
+                    "source_diversity": 0,
+                    "chunk_count": 0,
+                    "adequate": False,
+                    "reason": "Not evaluated",
+                },
+                "retries_used": 0,
+                "validation_retries_used": 0,
+                "validation_errors": [],
+                "abstained": False,
+                "abstain_reason": None,
+                "confidence": 0.0,
+                "used_deterministic_fallback": False,
+                "cited_indices": [],
+                "synthesis_output": {
+                    "answer": "",
+                    "cited_indices": [],
+                    "confidence": 0.0,
+                    "abstain_reason": None,
+                },
+                "trace": [],
+                "stage_timings": {},
+                "stage_timestamps": {},
+            }
 
-            while not task.done():
-                yield f"data: {json.dumps({'type': 'heartbeat', 'message': 'working'})}\n\n"
-                await asyncio.sleep(0.8)
+            logger.info("🔄 Streaming workflow execution with astream")
+            async for current_state in workflow.astream(initial_state):
+                if not isinstance(current_state, dict):
+                    continue
 
-            try:
-                result = await task
-                logger.info(f"🔄 Workflow completed, streaming tokens")
-                
-                # Stream trace events in real-time
-                trace_events = result.get("trace", []) if result else []
-                for trace_event in trace_events:
-                    yield f"data: {json.dumps({'type': 'trace', 'event': trace_event})}\n\n"
-                
-                answer = str(result.get("final_response", ""))
-                words = answer.split()
-                for idx, word in enumerate(words):
-                    suffix = " " if idx < len(words) - 1 else ""
-                    token = word + suffix
-                    partial_answer += token
-                    yield f"data: {json.dumps({'type': 'token', 'text': token})}\n\n"
-            except Exception as exc:
-                error_message = str(exc)
-                logger.error(f"❌ Stream generation error: {exc}", exc_info=True)
-                yield f"data: {json.dumps({'type': 'error', 'message': error_message})}\n\n"
-            finally:
-                latency = time.time() - start_time
-                final_payload = {
-                    "type": "final",
-                    "answer": partial_answer or (str(result.get("final_response", "")) if result else ""),
-                    "citations": result.get("citations", []) if result else [],
-                    "sub_queries": result.get("sub_queries", []) if result else [],
-                    "confidence": result.get("confidence", 0.0) if result else 0.0,
-                    "abstained": result.get("abstained", True) if result else True,
-                    "abstain_reason": result.get("abstain_reason") if result else (error_message or "stream_error"),
-                    "trace": result.get("trace", []) if result else [],
-                    "retrieval_quality": result.get("retrieval_quality", {}) if result else {},
-                    "stage_timings": result.get("stage_timings", {}) if result else {},
-                }
-                yield f"data: {json.dumps(final_payload)}\n\n"
-                
-                # Record metrics
-                status = "error" if error_message else "success"
-                rag_queries_total.labels(endpoint="/chat/stream", status=status).inc()
-                rag_query_latency.labels(endpoint="/chat/stream").observe(latency)
-                
-                logger.info(f"✓ /chat/stream completed in {latency:.2f}s, status={status}")
+                current = cast(NavigatorState, current_state)
+                result = current
+
+                # Emit newly added trace entries as trace events.
+                trace_events = current.get("trace", [])
+                while emitted_trace_count < len(trace_events):
+                    trace_event = trace_events[emitted_trace_count]
+                    emitted_trace_count += 1
+                    emitted_trace_event = True
+                    yield f"event: trace\ndata: {json.dumps(trace_event)}\n\n"
+
+                # Emit answer delta as chunk events (progressive text).
+                answer = str(current.get("final_response", ""))
+                if len(answer) > len(emitted_answer):
+                    delta = answer[len(emitted_answer):]
+                    for i in range(0, len(delta), 24):
+                        token = delta[i:i + 24]
+                        emitted_answer += token
+                        emitted_chunk_event = True
+                        yield f"event: chunk\ndata: {json.dumps({'text': token})}\n\n"
+
+            if result is None:
+                logger.warning("astream produced no states; falling back to run_workflow for stream completion")
+                result = await asyncio.to_thread(run_workflow, query)
+
+            # Compatibility fallback: still provide trace/chunk signals if astream
+            # yields sparse state updates and nothing was emitted above.
+            if result and not emitted_trace_event:
+                trace_events = result.get("trace", [])
+                if trace_events:
+                    for trace_event in trace_events:
+                        yield f"event: trace\ndata: {json.dumps(trace_event)}\n\n"
+                        emitted_trace_count += 1
+                        emitted_trace_event = True
+            if result and not emitted_chunk_event:
+                answer_fallback = str(result.get("final_response", ""))
+                if answer_fallback:
+                    yield f"event: chunk\ndata: {json.dumps({'text': answer_fallback})}\n\n"
+                    emitted_answer = answer_fallback
+                    emitted_chunk_event = True
+
+            # Final consistency flush: emit any trace entries not yet streamed.
+            if result:
+                final_trace = result.get("trace", [])
+                while emitted_trace_count < len(final_trace):
+                    trace_event = final_trace[emitted_trace_count]
+                    emitted_trace_count += 1
+                    emitted_trace_event = True
+                    yield f"event: trace\ndata: {json.dumps(trace_event)}\n\n"
+
+                final_answer = str(result.get("final_response", ""))
+                if len(final_answer) > len(emitted_answer):
+                    tail = final_answer[len(emitted_answer):]
+                    for i in range(0, len(tail), 24):
+                        token = tail[i:i + 24]
+                        emitted_answer += token
+                        emitted_chunk_event = True
+                        yield f"event: chunk\ndata: {json.dumps({'text': token})}\n\n"
+
+            final_payload = {
+                "answer": str(result.get("final_response", "")) if result else emitted_answer,
+                "citations": result.get("citations", []) if result else [],
+                "sub_queries": result.get("sub_queries", []) if result else [],
+                "confidence": result.get("confidence", 0.0) if result else 0.0,
+                "abstained": result.get("abstained", True) if result else True,
+                "abstain_reason": result.get("abstain_reason") if result else None,
+                "trace": result.get("trace", []) if result else [],
+                "retrieval_quality": result.get("retrieval_quality", {}) if result else {},
+                "stage_timings": result.get("stage_timings", {}) if result else {},
+            }
+            yield f"event: complete\ndata: {json.dumps(final_payload)}\n\n"
         except (GeneratorExit, asyncio.CancelledError):
             # Client disconnected or request was cancelled
             logger.info("ℹ️ /chat/stream client disconnected")
-            if task and not task.done():
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
             # Don't re-raise; gracefully end the stream
+        except Exception as exc:
+            error_message = str(exc)
+            logger.error(f"❌ Stream generation error: {exc}", exc_info=True)
+            yield f"event: error\ndata: {json.dumps({'error': error_message})}\n\n"
+        finally:
+            latency = time.time() - start_time
+            status = "error" if error_message else "success"
+            rag_queries_total.labels(endpoint="/chat/stream", status=status).inc()
+            rag_query_latency.labels(endpoint="/chat/stream").observe(latency)
+            logger.info(f"✓ /chat/stream completed in {latency:.2f}s, status={status}")
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/chat/debug")

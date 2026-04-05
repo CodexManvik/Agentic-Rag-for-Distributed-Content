@@ -8,10 +8,10 @@ import { ModelSelector } from './ModelSelector'
 import { AlertCircle, MessageSquare } from 'lucide-react'
 
 export function ChatWindow() {
-  const { currentSession, state, addMessage, setError } = useChat()
+  const { currentSession, state } = useChat()
   const { files, openFileDialog, removeFile, filePaths, clearFiles } =
     useElectronFile()
-  const { sendMessage, isLoading } = useChat_API()
+  const { sendMessage, isLoading, streamingText, streamingTrace } = useChat_API()
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [localError, setLocalError] = useState<string | null>(null)
@@ -81,12 +81,29 @@ export function ChatWindow() {
         ) : (
           <>
             {currentSession.messages.map(msg => (
-              <Message
-                key={msg.id}
-                role={msg.role}
-                content={msg.content}
-                timestamp={msg.timestamp}
-              />
+              <div key={msg.id}>
+                <Message role={msg.role} content={msg.content} timestamp={msg.timestamp} />
+                {msg.role === 'assistant' && Array.isArray(msg.trace) && msg.trace.length > 0 && (
+                  <details open className="mt-2 ml-12 text-xs text-slate-300">
+                    <summary className="cursor-pointer">Trace ({msg.trace.length})</summary>
+                    <ul className="mt-1 list-disc pl-4">
+                      {msg.trace.map((entry, idx) => (
+                        <li key={idx}>{String(entry.node || entry.detail || 'trace')}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                {msg.role === 'assistant' && Array.isArray(msg.citations) && msg.citations.length > 0 && (
+                  <div className="mt-2 ml-12 text-xs text-slate-300">
+                    <div>Sources:</div>
+                    <ul className="list-disc pl-4">
+                      {msg.citations.map((citation, idx) => (
+                        <li key={idx}>{String(citation.source || citation.url || 'source')}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
             ))}
             {isLoading && (
               <div className="flex gap-3 py-4 px-1">
@@ -94,7 +111,19 @@ export function ChatWindow() {
                   <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
                 </div>
                 <div className="flex-1">
-                  <span className="text-sm text-slate-400">Assistant is thinking...</span>
+                  <span className="text-sm text-slate-400">
+                    {streamingText ? streamingText : 'Assistant is thinking...'}
+                  </span>
+                  {streamingTrace.length > 0 && (
+                    <details open className="mt-2 text-xs text-slate-300">
+                      <summary className="cursor-pointer">Trace ({streamingTrace.length})</summary>
+                      <ul className="mt-1 list-disc pl-4">
+                        {streamingTrace.map((entry, idx) => (
+                          <li key={idx}>{String(entry.node || entry.detail || 'trace')}</li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
                 </div>
               </div>
             )}

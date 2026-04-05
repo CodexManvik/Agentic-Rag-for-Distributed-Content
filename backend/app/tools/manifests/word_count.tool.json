@@ -1,0 +1,6 @@
+{
+  "name": "word_count",
+  "version": "1.0.0",
+  "description": "Counts words in input text.",
+  "entrypoint": "app.tools.builtin.functions:word_count"
+}

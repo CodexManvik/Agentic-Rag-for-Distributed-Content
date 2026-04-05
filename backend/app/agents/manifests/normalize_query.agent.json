@@ -1,0 +1,16 @@
+{
+  "name": "normalize_query",
+  "version": "1.0.0",
+  "description": "Normalize incoming query text.",
+  "inputs": {
+    "query": { "type": "string", "required": true }
+  },
+  "outputs": {
+    "query": { "type": "string" },
+    "trace": { "type": "array" }
+  },
+  "execution": {
+    "type": "python",
+    "entrypoint": "app.graph.nodes:normalize_query_node"
+  }
+}

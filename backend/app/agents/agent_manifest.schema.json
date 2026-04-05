@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.agentic-rag/schemas/agent-manifest.json",
+  "title": "Agent Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "version",
+    "description",
+    "inputs",
+    "outputs",
+    "execution"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_\\-]+$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "entrypoint"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "python",
+            "workflow",
+            "tool_call"
+          ]
+        },
+        "entrypoint": {
+          "type": "string",
+          "minLength": 3,
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_\\.]*:[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "execution_mode": {
+          "type": "string",
+          "enum": [
+            "sequence",
+            "parallel"
+          ]
+        },
+        "workflow": {
+          "type": "array"
+        },
+        "tool_name": {
+          "type": "string"
+        },
+        "input_field": {
+          "type": "string"
+        },
+        "output_field": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

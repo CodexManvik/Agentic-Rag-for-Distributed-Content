@@ -1,7 +1,9 @@
 .venv/
+__pycache__/
+*.pyc
 .pytest_cache/
 backend/app/__pycache__/
-backend/app/api/__pycache__/
+backend/app/api/__pycache__
 backend/app/services/__pycache__/
 backend/tests/__pycache__/
 backend/app/graph/__pycache__/
@@ -19,4 +21,4 @@ desktop-app/.DS_Store
 desktop-app/.env
 desktop-app/.env.local
 desktop-app/.env.*.local
-
+backend/app/agents/__pycache__

@@ -1,0 +1,16 @@
+{
+  "name": "retrieval",
+  "version": "1.0.0",
+  "description": "Retrieve chunks from vector store using sub-queries.",
+  "inputs": {
+    "sub_queries": { "type": "array", "required": true }
+  },
+  "outputs": {
+    "retrieved_chunks": { "type": "array" },
+    "trace": { "type": "array" }
+  },
+  "execution": {
+    "type": "python",
+    "entrypoint": "app.graph.nodes:retrieval_agent"
+  }
+}

@@ -6,20 +6,19 @@ from typing import Callable, cast
 
 from langgraph.graph import END, StateGraph
 
+from app.agents.executor import AgentExecutor
+from app.agents.registry import AgentRegistry
 from app.config import settings
 from app.graph.nodes import (
-    abstain_node,
-    adequacy_check_agent,
-    citation_validation_agent,
-    finalize_node,
     is_fallback_abstain_answer,
-    normalize_query_node,
-    planning_agent,
-    reformulation_agent,
-    retrieval_agent,
-    synthesis_agent,
 )
 from app.graph.state import NavigatorState
+
+
+AGENT_MANIFEST_DIR = Path(__file__).resolve().parents[1] / "agents" / "manifests"
+agent_registry = AgentRegistry(AGENT_MANIFEST_DIR)
+agent_registry.load_agents()
+agent_executor = AgentExecutor(agent_registry)
 
 
 def _timed_node(name: str, fn: Callable[[NavigatorState], NavigatorState]) -> Callable[[NavigatorState], NavigatorState]:
@@ -109,15 +108,45 @@ def _route_after_validation(state: NavigatorState) -> str:
 
 def build_graph():
     graph = StateGraph(NavigatorState)
-    graph.add_node("normalize_query", _timed_node("normalize_query", normalize_query_node))
-    graph.add_node("planning", _timed_node("planning", planning_agent))
-    graph.add_node("retrieval", _timed_node("retrieval", retrieval_agent))
-    graph.add_node("adequacy", _timed_node("adequacy", adequacy_check_agent))
-    graph.add_node("reformulation", _timed_node("reformulation", reformulation_agent))
-    graph.add_node("synthesis", _timed_node("synthesis", synthesis_agent))
-    graph.add_node("citation_validation", _timed_node("citation_validation", citation_validation_agent))
-    graph.add_node("abstain", _timed_node("abstain", abstain_node))
-    graph.add_node("finalize", _timed_node("finalize", finalize_node))
+    graph.add_node(
+        "normalize_query",
+        _timed_node("normalize_query", agent_executor.create_node(agent_registry.get_agent("normalize_query"))),
+    )
+    graph.add_node(
+        "planning",
+        _timed_node("planning", agent_executor.create_node(agent_registry.get_agent("planning"))),
+    )
+    graph.add_node(
+        "retrieval",
+        _timed_node("retrieval", agent_executor.create_node(agent_registry.get_agent("retrieval"))),
+    )
+    graph.add_node(
+        "adequacy",
+        _timed_node("adequacy", agent_executor.create_node(agent_registry.get_agent("adequacy"))),
+    )
+    graph.add_node(
+        "reformulation",
+        _timed_node("reformulation", agent_executor.create_node(agent_registry.get_agent("reformulation"))),
+    )
+    graph.add_node(
+        "synthesis",
+        _timed_node("synthesis", agent_executor.create_node(agent_registry.get_agent("synthesis"))),
+    )
+    graph.add_node(
+        "citation_validation",
+        _timed_node(
+            "citation_validation",
+            agent_executor.create_node(agent_registry.get_agent("citation_validation")),
+        ),
+    )
+    graph.add_node(
+        "abstain",
+        _timed_node("abstain", agent_executor.create_node(agent_registry.get_agent("abstain"))),
+    )
+    graph.add_node(
+        "finalize",
+        _timed_node("finalize", agent_executor.create_node(agent_registry.get_agent("finalize"))),
+    )
 
     graph.set_entry_point("normalize_query")
     graph.add_edge("normalize_query", "planning")

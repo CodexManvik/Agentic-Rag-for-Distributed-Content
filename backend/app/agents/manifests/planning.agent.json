@@ -1,0 +1,16 @@
+{
+  "name": "planning",
+  "version": "1.0.0",
+  "description": "Generate retrieval sub-queries from normalized query.",
+  "inputs": {
+    "query": { "type": "string", "required": true }
+  },
+  "outputs": {
+    "sub_queries": { "type": "array" },
+    "trace": { "type": "array" }
+  },
+  "execution": {
+    "type": "python",
+    "entrypoint": "app.graph.nodes:planning_agent"
+  }
+}

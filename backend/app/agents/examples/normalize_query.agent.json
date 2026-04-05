@@ -1,0 +1,23 @@
+{
+  "name": "normalize_query",
+  "version": "1.0.0",
+  "description": "Normalize and sanitize the incoming user query before planning.",
+  "inputs": {
+    "query": {
+      "type": "string",
+      "required": true
+    }
+  },
+  "outputs": {
+    "query": {
+      "type": "string"
+    },
+    "trace": {
+      "type": "array"
+    }
+  },
+  "execution": {
+    "type": "python",
+    "entrypoint": "app.graph.nodes:normalize_query_node"
+  }
+}

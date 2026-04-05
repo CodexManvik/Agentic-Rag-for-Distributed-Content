@@ -1,0 +1,23 @@
+{
+  "name": "research_team",
+  "version": "1.0.0",
+  "description": "Sequential multi-agent workflow: planning -> retrieval -> synthesis.",
+  "inputs": {
+    "query": { "type": "string", "required": true },
+    "original_query": { "type": "string", "required": true }
+  },
+  "outputs": {
+    "final_response": { "type": "string" },
+    "retrieved_chunks": { "type": "array" },
+    "trace": { "type": "array" }
+  },
+  "execution": {
+    "type": "workflow",
+    "execution_mode": "sequence",
+    "workflow": [
+      { "agent": "planning" },
+      { "agent": "retrieval" },
+      { "agent": "synthesis" }
+    ]
+  }
+}

@@ -42,3 +42,4 @@ class ChatResponse(BaseModel):
     trace: list[TraceEvent]
     retrieval_quality: RetrievalQuality
     stage_timings: dict[str, float] = Field(default_factory=dict)
+    

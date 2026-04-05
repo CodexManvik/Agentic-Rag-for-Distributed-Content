@@ -1,0 +1,17 @@
+{
+  "name": "abstain",
+  "version": "1.0.0",
+  "description": "Generate abstention response when evidence is insufficient.",
+  "inputs": {
+    "query": { "type": "string", "required": true }
+  },
+  "outputs": {
+    "final_response": { "type": "string" },
+    "abstained": { "type": "boolean" },
+    "trace": { "type": "array" }
+  },
+  "execution": {
+    "type": "python",
+    "entrypoint": "app.graph.nodes:abstain_node"
+  }
+}
