@@ -44,7 +44,10 @@ class HardwareInfo:
         parts = [f"OS: {self.os_name} ({self.architecture})"]
         
         if self.gpu_available and self.gpu_name:
-            parts.append(f"GPU: {self.gpu_name} ({self.gpu_vram_gb:.1f}GB VRAM)")
+            if self.gpu_vram_gb is not None:
+                parts.append(f"GPU: {self.gpu_name} ({self.gpu_vram_gb:.1f}GB VRAM)")
+            else:
+                parts.append(f"GPU: {self.gpu_name}")
         else:
             parts.append("GPU: None (CPU-only mode)")
         
@@ -131,10 +134,15 @@ def detect_hardware() -> HardwareInfo:
                 if lines:
                     gpu_available = True
                     # Parse first GPU info
-                    parts = lines[0].split(',')
-                    gpu_name = parts[0].strip()
-                    vram_str = parts[1].strip().replace(' MiB', '')
-                    gpu_vram_gb = float(vram_str) / 1024
+                    parts = [segment.strip() for segment in lines[0].split(',')]
+                    if parts:
+                        gpu_name = parts[0]
+                    if len(parts) > 1:
+                        vram_str = parts[1].replace(' MiB', '').replace('MiB', '').strip()
+                        try:
+                            gpu_vram_gb = float(vram_str) / 1024
+                        except (ValueError, TypeError):
+                            gpu_vram_gb = None
                     
                     logger.info(f"Detected {gpu_count} NVIDIA GPU(s) via nvidia-smi")
         except Exception as e:

@@ -106,14 +106,12 @@ class BackendFactory:
     def auto_select_backend(
         cls,
         model_path: str,
-        prefer_gpu: bool = True
     ) -> InferenceBackendType:
         """
         Automatically select the best backend for a model.
         
         Args:
             model_path: Model file path or identifier
-            prefer_gpu: Whether to prefer GPU-accelerated backends
             
         Returns:
             Recommended backend type

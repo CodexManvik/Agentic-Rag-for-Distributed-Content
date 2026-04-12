@@ -1,4 +1,4 @@
-{
+﻿{
   "run_timestamp": "2026-04-06T06:15:08Z",
   "resource_pack_name": "hackathon_public_pack_v2",
   "resource_pack_path": "backend\\resources\\resource_pack.yaml",
@@ -25,7 +25,7 @@
     "https://github.com/explodinggradients/ragas/blob/main/README.md"
   ],
   "processed_pdfs": [
-    "C:\\Project\\agentic_rag\\Agentic-Rag-for-Distributed-Content\\Hackathon_Problem_Statement_SmartKnowledgeNavigator.docx.pdf",
+    "Hackathon_Problem_Statement_SmartKnowledgeNavigator.docx.pdf",
     "https://arxiv.org/pdf/2005.11401.pdf",
     "https://arxiv.org/pdf/2312.10997.pdf",
     "https://arxiv.org/pdf/2310.11511.pdf",
@@ -38,8 +38,8 @@
     "https://arxiv.org/pdf/2402.05102.pdf"
   ],
   "processed_docs": [
-    "C:\\Project\\agentic_rag\\Agentic-Rag-for-Distributed-Content\\backend\\resources\\architecture_notes.md",
-    "C:\\Project\\agentic_rag\\Agentic-Rag-for-Distributed-Content\\backend\\resources\\rag_concepts.md"
+    "backend\\resources\\architecture_notes.md",
+    "backend\\resources\\rag_concepts.md"
   ],
   "documents_processed": 33,
   "chunks_added": 2069,
@@ -250,7 +250,7 @@
       "error": null
     },
     {
-      "source": "C:\\Project\\agentic_rag\\Agentic-Rag-for-Distributed-Content\\Hackathon_Problem_Statement_SmartKnowledgeNavigator.docx.pdf",
+      "source": "Hackathon_Problem_Statement_SmartKnowledgeNavigator.docx.pdf",
       "source_type": "pdf_local",
       "domain": "local",
       "status": "ok",
@@ -360,7 +360,7 @@
       "error": null
     },
     {
-      "source": "C:\\Project\\agentic_rag\\Agentic-Rag-for-Distributed-Content\\backend\\resources\\architecture_notes.md",
+      "source": "backend\\resources\\architecture_notes.md",
       "source_type": "project_doc",
       "domain": "local",
       "status": "ok",
@@ -370,7 +370,7 @@
       "error": null
     },
     {
-      "source": "C:\\Project\\agentic_rag\\Agentic-Rag-for-Distributed-Content\\backend\\resources\\rag_concepts.md",
+      "source": "backend\\resources\\rag_concepts.md",
       "source_type": "project_doc",
       "domain": "local",
       "status": "ok",
@@ -381,3 +381,6 @@
     }
   ]
 }
+
+
+

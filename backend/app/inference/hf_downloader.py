@@ -6,7 +6,7 @@ and progress callbacks.
 """
 
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Optional
 import os
 
 from loguru import logger
@@ -54,7 +54,6 @@ class HuggingFaceDownloader:
         repo_id: str,
         filename: str,
         local_dir: Optional[Path] = None,
-        progress_callback: Optional[Callable[[int, int], None]] = None
     ) -> Path:
         """
         Download a single model file from HuggingFace.
@@ -63,7 +62,6 @@ class HuggingFaceDownloader:
             repo_id: Repository ID (e.g., "Qwen/Qwen2.5-7B-Instruct-GGUF")
             filename: File to download (e.g., "qwen2.5-7b-instruct-q4_k_m.gguf")
             local_dir: Target directory (optional, uses cache if not specified)
-            progress_callback: Optional callback(downloaded_bytes, total_bytes)
             
         Returns:
             Path to downloaded file
@@ -90,18 +88,19 @@ class HuggingFaceDownloader:
             return downloaded_path
             
         except HfHubHTTPError as e:
-            if e.response.status_code == 404:
+            status_code = getattr(e.response, "status_code", None)
+            if status_code == 404:
                 raise RuntimeError(
                     f"File not found: {filename} in {repo_id}. "
                     "Check that the repository and filename are correct."
                 )
-            elif e.response.status_code == 401:
+            elif status_code == 401:
                 raise RuntimeError(
                     f"Access denied to {repo_id}. "
                     "You may need to provide a HuggingFace token for private repos."
                 )
             else:
-                raise RuntimeError(f"Download failed: {e}")
+                raise RuntimeError(f"Download failed (status={status_code}): {e}")
         except Exception as e:
             logger.error(f"Download failed: {e}")
             raise RuntimeError(f"Download error: {e}")

@@ -8,6 +8,9 @@ within conversation sessions.
 import os
 import pickle
 import logging
+import hmac
+import hashlib
+import re
 from typing import Optional, Dict, Any, List
 from pathlib import Path
 
@@ -30,6 +33,9 @@ class SessionKVCache:
             session_id: Unique session identifier
             cache_dir: Directory to store cache files
         """
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", session_id):
+            raise ValueError("session_id contains unsafe characters; only letters, digits, '_' and '-' are allowed")
+
         self.session_id = session_id
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -38,6 +44,8 @@ class SessionKVCache:
         self._cache_data: Dict[str, Any] = {}
         self._context_tokens: List[int] = []
         self._is_loaded = False
+        self._closed = False
+        self._hmac_key = os.getenv("KV_CACHE_HMAC_KEY", "dev-only-kv-cache-key").encode("utf-8")
         
         # Load existing cache if available
         self._load_cache()
@@ -68,10 +76,7 @@ class SessionKVCache:
                 "token_count": len(context_tokens)
             }
             self._context_tokens = context_tokens.copy()
-            
-            # Persist to disk
-            with open(self.cache_file, "wb") as f:
-                pickle.dump(self._cache_data, f)
+            self._write_cache_to_disk()
             
             logger.debug(f"Saved KV cache state for session {self.session_id} ({len(context_tokens)} tokens)")
             return True
@@ -166,24 +171,44 @@ class SessionKVCache:
         Returns:
             Cache information dictionary
         """
+        cache_file_size = self._get_file_size()
         return {
             "session_id": self.session_id,
             "has_cache": bool(self._cache_data),
             "token_count": len(self._context_tokens),
-            "cache_file_exists": self.cache_file.exists(),
-            "cache_file_size": self.cache_file.stat().st_size if self.cache_file.exists() else 0,
+            "cache_file_exists": cache_file_size > 0,
+            "cache_file_size": cache_file_size,
             "metadata": self._cache_data.get("metadata", {}) if self._cache_data else {}
         }
+
+    def _get_file_size(self) -> int:
+        try:
+            return self.cache_file.stat().st_size
+        except FileNotFoundError:
+            return 0
+
+    def _write_cache_to_disk(self) -> None:
+        payload = pickle.dumps(self._cache_data, protocol=pickle.HIGHEST_PROTOCOL)
+        signature = hmac.new(self._hmac_key, payload, hashlib.sha256).hexdigest().encode("ascii")
+        with open(self.cache_file, "wb") as f:
+            f.write(signature + b"\n" + payload)
     
     def _load_cache(self) -> None:
         """Load cache from disk if available."""
-        if not self.cache_file.exists():
+        if self._get_file_size() <= 0:
             self._is_loaded = True
             return
         
         try:
             with open(self.cache_file, "rb") as f:
-                self._cache_data = pickle.load(f)
+                raw = f.read()
+
+            sig_bytes, payload = raw.split(b"\n", 1)
+            expected_sig = hmac.new(self._hmac_key, payload, hashlib.sha256).hexdigest().encode("ascii")
+            if not hmac.compare_digest(sig_bytes, expected_sig):
+                raise ValueError("Cache file HMAC verification failed")
+
+            self._cache_data = pickle.loads(payload)
             
             self._context_tokens = self._cache_data.get("context_tokens", [])
             self._is_loaded = True
@@ -196,6 +221,24 @@ class SessionKVCache:
             self._cache_data = {}
             self._context_tokens = []
             self._is_loaded = True
+
+    def close(self) -> None:
+        """Persist cache state deterministically and mark the cache as closed."""
+        if self._closed:
+            return
+        try:
+            if self._cache_data and self.cache_file.parent.exists():
+                self._write_cache_to_disk()
+        except Exception as exc:
+            logger.exception(f"Failed to persist KV cache for session {self.session_id}: {exc}")
+        finally:
+            self._closed = True
+
+    def __enter__(self) -> "SessionKVCache":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
     
     @classmethod
     def cleanup_old_caches(cls, cache_dir: str = "data/kv_cache", days_old: int = 7) -> int:
@@ -231,11 +274,8 @@ class SessionKVCache:
             return 0
     
     def __del__(self):
-        """Cleanup on destruction - ensure cache is persisted."""
-        # Only persist if we have data and haven't explicitly cleared
-        if self._cache_data and self.cache_file.parent.exists():
-            try:
-                with open(self.cache_file, "wb") as f:
-                    pickle.dump(self._cache_data, f)
-            except Exception:
-                pass  # Ignore errors during cleanup
+        """Best-effort cleanup; explicit close() should be preferred by callers."""
+        try:
+            self.close()
+        except Exception:
+            pass

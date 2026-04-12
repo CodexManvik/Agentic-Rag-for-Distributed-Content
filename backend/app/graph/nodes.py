@@ -98,16 +98,7 @@ def retrieval_node(state: AgentState) -> dict[str, Any]:
 
     try:
         retriever = get_retriever()
-        
-        # Debug the actual database size (LanceDB)
-        try:
-            from app.vectorstore.lancedb_store import LanceDBVectorStore
-            store = LanceDBVectorStore(db_path="./lancedb_data")
-            db_size = store.count_documents(knowledge_base="hackathon_demo")
-            logger.info(f"📊 Total chunks currently in LanceDB (hackathon_demo): {db_size}")
-        except Exception as e:
-            logger.info(f"📊 Could not count LanceDB size: {e}")
-        
+
         # retrieve() directly returns a list of NodeWithScore objects (no LLM call)
         source_nodes = retriever.retrieve(query)
         formatted_chunks = [_extract_chunk(node, idx) for idx, node in enumerate(source_nodes, start=1)]
@@ -193,6 +184,7 @@ def _llm_grounded_narrative_answer(
         content = getattr(response, "content", response)
         return str(content).strip()
     except Exception:
+        logger.exception("Failed to generate grounded narrative answer")
         return ""
 
 
@@ -435,7 +427,7 @@ def supervisor_node(state: AgentState) -> dict[str, Any]:
 
         if next_step == "AdequacyAgent":
             next_step = "RetrievalAgent"
-        next_step = "RetrievalAgent"
+        next_step = next_step or "RetrievalAgent"
 
         return {
             "next_step": next_step,

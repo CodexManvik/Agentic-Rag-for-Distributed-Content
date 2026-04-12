@@ -5,7 +5,7 @@ Provides a centralized database of models with hardware requirements,
 capabilities, and download information.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import Optional
 from pathlib import Path
 import json
@@ -71,7 +71,9 @@ class ModelMetadata:
     @classmethod
     def from_dict(cls, data: dict) -> "ModelMetadata":
         """Create from dictionary."""
-        return cls(**data)
+        allowed_keys = {f.name for f in fields(cls)}
+        filtered_data = {k: v for k, v in data.items() if k in allowed_keys}
+        return cls(**filtered_data)
 
 
 class ModelRegistry:
@@ -128,7 +130,7 @@ class ModelRegistry:
         
         for model in self._models.values():
             # VRAM filter
-            if max_vram_gb and model.vram_requirement_gb > max_vram_gb:
+            if max_vram_gb is not None and model.vram_requirement_gb > max_vram_gb:
                 continue
             
             # Downloaded filter

@@ -96,9 +96,9 @@ def migrate_chromadb_to_lancedb(
         logger.info(f"Migrating batch {i//batch_size + 1} "
                    f"(documents {i+1}-{batch_end} of {total_docs})")
         
-        # Prepare batch
-        batch_docs = []
-        batch_embeddings = []
+        # Prepare batch grouped by knowledge base to preserve per-document KB routing.
+        grouped_docs: dict[str, list[dict[str, object]]] = {}
+        grouped_embeddings: dict[str, list[list[float]]] = {}
         
         for j in range(i, batch_end):
             # Extract knowledge base from metadata or use default
@@ -110,18 +110,22 @@ def migrate_chromadb_to_lancedb(
                 'metadata': metadata
             }
             
-            batch_docs.append(doc)
-            batch_embeddings.append(results['embeddings'][j])
+            grouped_docs.setdefault(kb, []).append(doc)
+            grouped_embeddings.setdefault(kb, []).append(results['embeddings'][j])
         
         # Add to LanceDB
         try:
-            lance_store.add_documents(
-                documents=batch_docs,
-                embeddings=batch_embeddings,
-                knowledge_base=kb
-            )
-            
-            migrated_count += len(batch_docs)
+            inserted_in_batch = 0
+            for kb, docs_for_kb in grouped_docs.items():
+                embeddings_for_kb = grouped_embeddings.get(kb, [])
+                lance_store.add_documents(
+                    documents=docs_for_kb,
+                    embeddings=embeddings_for_kb,
+                    knowledge_base=kb
+                )
+                inserted_in_batch += len(docs_for_kb)
+
+            migrated_count += inserted_in_batch
             logger.info(f"Migrated {migrated_count}/{total_docs} documents")
             
         except Exception as e:

@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     retrieval_langgraph_source_boost: float = 1.2
     rerank_enabled: bool = True
     low_latency_skip_overlap_check: bool = True
-    debug_trace_enabled: bool = True
+    debug_trace_enabled: bool = False
     max_retrieval_retries: int = 0
     max_validation_retries: int = 0
     enable_short_circuit_routing: bool = True

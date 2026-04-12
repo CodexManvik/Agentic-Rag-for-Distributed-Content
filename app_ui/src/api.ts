@@ -1,4 +1,4 @@
-const BACKEND_BASE_URL = "http://localhost:8000";
+const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_BASE_URL ?? "http://localhost:8000";
 
 export interface StreamTraceEvent {
   node: string;
@@ -34,7 +34,7 @@ export interface StreamCompletePayload {
 
 export interface ChatMessage {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system" | "tool";
   content: string;
   citations?: StreamCitation[];
   trace?: StreamTraceEvent[];
@@ -189,17 +189,19 @@ export function streamChat(
     }
   });
 
-  source.addEventListener("error", (event) => {
+  source.addEventListener("backend-error", (event) => {
     try {
       const payload = JSON.parse((event as MessageEvent).data) as { error?: unknown };
       if (typeof payload.error === "string" && payload.error.length > 0) {
         handlers.onError(new Error(payload.error));
-        source.close();
-        return;
+      } else {
+        handlers.onError(new Error("Streaming request failed."));
       }
-    } catch { /* ignore */ }
-    handlers.onError(new Error("Streaming connection failed. Backend may be unreachable."));
-    source.close();
+    } catch {
+      handlers.onError(new Error("Streaming request failed."));
+    } finally {
+      source.close();
+    }
   });
 
   source.onerror = () => {
@@ -221,7 +223,13 @@ export interface ChatSession {
 }
 
 function toChatMessage(message: BackendConversationMessage): ChatMessage {
-  const role = message.role === "assistant" ? "assistant" : "user";
+  const role =
+    message.role === "assistant" ||
+    message.role === "user" ||
+    message.role === "system" ||
+    message.role === "tool"
+      ? message.role
+      : "user";
   const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
   return {
     id: `msg-${Date.parse(message.timestamp)}-${Math.random().toString(36).slice(2, 8)}`,

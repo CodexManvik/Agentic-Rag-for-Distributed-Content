@@ -18,6 +18,12 @@ from .session_state import SessionState, ConversationMessage, ModelConfig
 logger = logging.getLogger(__name__)
 
 
+def _safe_user_id_for_log(user_id: Optional[str]) -> str:
+    if not user_id:
+        return "anonymous"
+    return f"{user_id[:4]}..." if len(user_id) > 4 else user_id
+
+
 class SessionManager:
     """
     Manages session persistence using SQLite.
@@ -112,7 +118,7 @@ class SessionManager:
         
         self._save_session(session)
         
-        logger.info(f"Created new session: {session_id} for user: {user_id}")
+        logger.info(f"Created new session: {session_id} for user: {_safe_user_id_for_log(user_id)}")
         return session
     
     def get_session(self, session_id: str) -> Optional[SessionState]:
@@ -280,28 +286,34 @@ class SessionManager:
             # Messages today (count conversation entries from today's sessions)
             today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
             today_str = today_start.isoformat()
-            cursor.execute("SELECT conversation_history FROM sessions WHERE last_active > ?", (today_str,))
-            messages_today = 0
-            for row in cursor.fetchall():
-                try:
-                    messages = json.loads(row['conversation_history'])
-                    messages_today += len(messages)
-                except (json.JSONDecodeError, TypeError):
-                    pass  # Skip malformed conversation history
-            
+            cursor.execute(
+                """
+                SELECT COALESCE(SUM(
+                    CASE
+                        WHEN json_valid(conversation_history) THEN json_array_length(conversation_history)
+                        ELSE 0
+                    END
+                ), 0)
+                FROM sessions
+                WHERE last_active > ?
+                """,
+                (today_str,),
+            )
+            messages_today = int(cursor.fetchone()[0] or 0)
+
             # Average session length (in conversation turns)
-            cursor.execute("SELECT conversation_history FROM sessions")
-            total_messages = 0
-            session_count = 0
-            for row in cursor.fetchall():
-                try:
-                    messages = json.loads(row['conversation_history'])
-                    total_messages += len(messages)
-                    session_count += 1
-                except (json.JSONDecodeError, TypeError):
-                    pass  # Skip malformed conversation history
-            
-            avg_session_length = total_messages / max(session_count, 1)
+            cursor.execute(
+                """
+                SELECT COALESCE(AVG(
+                    CASE
+                        WHEN json_valid(conversation_history) THEN json_array_length(conversation_history)
+                        ELSE 0
+                    END
+                ), 0)
+                FROM sessions
+                """
+            )
+            avg_session_length = float(cursor.fetchone()[0] or 0)
             
             # Top knowledge bases (group by knowledge_base_id)
             cursor.execute("""

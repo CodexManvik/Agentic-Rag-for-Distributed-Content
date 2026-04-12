@@ -86,7 +86,11 @@ class ConversationHistory:
         if role_filter:
             messages = [msg for msg in messages if msg.role == role_filter]
         
-        if limit:
+        if limit is None:
+            pass
+        elif limit == 0:
+            messages = []
+        elif limit > 0:
             messages = messages[-limit:]
         
         return messages
@@ -182,7 +186,20 @@ class ConversationHistory:
         
         if preserved_chars >= max_chars:
             logger.warning("Preserved messages exceed context length")
-            return preserved_messages[-preserve_recent:] if preserve_recent else []
+            recent_part = preserved_messages[-preserve_recent:] if preserve_recent else []
+            if preserve_system:
+                system_part = [msg for msg in self.messages if msg.role == MessageRole.SYSTEM]
+                merged = []
+                seen_ids = set()
+                for msg in system_part + recent_part:
+                    msg_key = id(msg)
+                    if msg_key in seen_ids:
+                        continue
+                    seen_ids.add(msg_key)
+                    merged.append(msg)
+                merged.sort(key=lambda msg: self.messages.index(msg))
+                return merged
+            return recent_part
         
         # Fill remaining space with other messages
         available_chars = max_chars - preserved_chars
@@ -262,16 +279,16 @@ class ConversationHistory:
     def _trim_history(self) -> None:
         """Trim history to reasonable size when it gets too long."""
         if len(self.messages) > self._max_history_length:
-            # Keep system messages and recent messages
-            system_messages = [msg for msg in self.messages if msg.role == MessageRole.SYSTEM]
             other_messages = [msg for msg in self.messages if msg.role != MessageRole.SYSTEM]
-            
-            # Keep last 800 non-system messages (leaving room for system messages)
+
+            # Keep last 800 non-system messages.
             keep_count = 800
-            if len(other_messages) > keep_count:
-                other_messages = other_messages[-keep_count:]
-            
-            self.messages = system_messages + other_messages
+            keep_non_system = set(id(msg) for msg in other_messages[-keep_count:])
+            self.messages = [
+                msg
+                for msg in self.messages
+                if msg.role == MessageRole.SYSTEM or id(msg) in keep_non_system
+            ]
             logger.info(f"Trimmed conversation history to {len(self.messages)} messages")
     
     def __len__(self) -> int:

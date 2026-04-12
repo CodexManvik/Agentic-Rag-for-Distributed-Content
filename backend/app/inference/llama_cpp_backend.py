@@ -55,6 +55,7 @@ class LlamaCppBackend(InferenceBackend):
         
         super().__init__(config)
         self._llama: Optional[Llama] = None
+        self._model_info: Optional[ModelInfo] = None
         
         # Default configuration
         self.n_ctx = config.get("n_ctx", 4096)
@@ -81,9 +82,10 @@ class LlamaCppBackend(InferenceBackend):
         logger.info(f"Loading GGUF model from {model_path}")
         
         try:
+            effective_n_ctx = kwargs.get("n_ctx", self.n_ctx)
             self._llama = Llama(
                 model_path=model_path,
-                n_ctx=kwargs.get("n_ctx", self.n_ctx),
+                n_ctx=effective_n_ctx,
                 n_gpu_layers=kwargs.get("n_gpu_layers", self.n_gpu_layers),
                 n_threads=kwargs.get("n_threads", self.n_threads),
                 use_mmap=kwargs.get("use_mmap", self.use_mmap),
@@ -98,7 +100,7 @@ class LlamaCppBackend(InferenceBackend):
             self._model_info = ModelInfo(
                 model_id=model_path,
                 name=model_name,
-                context_length=self.n_ctx,
+                context_length=effective_n_ctx,
                 quantization=self._extract_quantization(model_name),
                 backend_type=InferenceBackendType.LLAMA_CPP,
                 is_loaded=True,
@@ -178,16 +180,32 @@ class LlamaCppBackend(InferenceBackend):
         config: Optional[GenerationConfig] = None
     ) -> AsyncIterator[str]:
         """Generate text with streaming (async iterator)."""
-        # Run blocking iterator in thread pool
-        loop = asyncio.get_event_loop()
-        
-        def _sync_generator():
-            return self.stream_generate(prompt, config)
-        
-        iterator = await loop.run_in_executor(None, _sync_generator)
-        
-        for chunk in iterator:
-            yield chunk
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
+        error_holder: dict[str, Exception] = {}
+
+        def _worker() -> None:
+            try:
+                for chunk in self.stream_generate(prompt, config):
+                    asyncio.run_coroutine_threadsafe(queue.put(chunk), loop)
+            except Exception as exc:
+                error_holder["error"] = exc
+                logger.exception("llama.cpp streaming worker failed")
+            finally:
+                asyncio.run_coroutine_threadsafe(queue.put(None), loop)
+
+        worker_future = loop.run_in_executor(None, _worker)
+
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield item
+
+        await worker_future
+
+        if "error" in error_holder:
+            raise error_holder["error"]
     
     def embed(self, text: str) -> list[float]:
         """

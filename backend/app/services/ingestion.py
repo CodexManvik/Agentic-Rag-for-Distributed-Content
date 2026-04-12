@@ -11,6 +11,11 @@ from app.config import settings
 from app.services.compliance import is_url_allowlisted
 from app.services.retrieval import clear_retrieval_caches, get_vector_index
 
+try:
+    from chromadb.errors import NotFoundError as ChromaNotFoundError
+except Exception:  # pragma: no cover - fallback for older chromadb variants
+    ChromaNotFoundError = type("ChromaNotFoundError", (Exception,), {})
+
 
 class IngestionStats(TypedDict):
     documents_processed: int
@@ -33,20 +38,23 @@ def _insert_documents(documents: list[Document]) -> int:
     if not documents:
         return 0
 
-    before_count = _get_collection_count()
     index = get_vector_index()
+    inserted_count = 0
     for document in documents:
-        index.insert(document)
+        try:
+            index.insert(document)
+            inserted_count += 1
+        except Exception:
+            continue
     clear_retrieval_caches()
-    after_count = _get_collection_count()
-    return max(0, after_count - before_count)
+    return inserted_count
 
 
 def reset_index() -> None:
     client = chromadb.PersistentClient(path=settings.resolved_chroma_persist_directory)
     try:
         client.delete_collection(name=settings.chroma_collection_name)
-    except Exception:
+    except ChromaNotFoundError:
         pass
     client.get_or_create_collection(name=settings.chroma_collection_name)
     clear_retrieval_caches()

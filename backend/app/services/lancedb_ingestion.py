@@ -3,7 +3,7 @@
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TypedDict
+from typing import Optional, TypedDict
 
 from loguru import logger
 from llama_index.core import Document
@@ -98,23 +98,20 @@ def ingest_pdf(file_path: str, knowledge_base: str = "api_upload") -> IngestionS
         
         # Use PyMuPDF for better PDF processing
         documents = []
-        pdf_doc = fitz.open(file_path)
+        with fitz.open(file_path) as pdf_doc:
+            for page_num in range(len(pdf_doc)):
+                page = pdf_doc[page_num]
+                text = page.get_text()
 
-        for page_num in range(len(pdf_doc)):
-            page = pdf_doc[page_num]
-            text = page.get_text()
-            
-            if text.strip():  # Only add pages with content
-                doc = Document(
-                    text=text,
-                    metadata={
-                        "page": page_num + 1,
-                        "source": "pdf"
-                    }
-                )
-                documents.append(doc)
-
-        pdf_doc.close()
+                if text.strip():  # Only add pages with content
+                    doc = Document(
+                        text=text,
+                        metadata={
+                            "page": page_num + 1,
+                            "source": "pdf"
+                        }
+                    )
+                    documents.append(doc)
         
         # Add metadata
         filename = Path(file_path).name
@@ -214,7 +211,7 @@ def reset_knowledge_base(knowledge_base: str) -> bool:
         return False
 
 
-def get_knowledge_base_stats(knowledge_base: str = None) -> dict:
+def get_knowledge_base_stats(knowledge_base: Optional[str] = None) -> dict:
     """
     Get statistics for a knowledge base or all knowledge bases.
     

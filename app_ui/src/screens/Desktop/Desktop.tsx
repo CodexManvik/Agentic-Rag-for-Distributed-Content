@@ -39,6 +39,11 @@ export const Desktop = (): JSX.Element => {
 
   const streamRef = useRef<EventSource | null>(null);
 
+  const messageKey = useCallback((message: ChatMessage): string => {
+    if (message.id) return `id:${message.id}`;
+    return `fallback:${message.role}:${message.ts}:${message.content}`;
+  }, []);
+
   // Load everything on mount
   useEffect(() => {
     let mounted = true;
@@ -93,12 +98,24 @@ export const Desktop = (): JSX.Element => {
       };
 
       const current = await getSession(activeSession.id);
+      const mergedMessages: ChatMessage[] = [];
+      const seen = new Set<string>();
+      const appendUnique = (messages: ChatMessage[]) => {
+        for (const msg of messages) {
+          const key = messageKey(msg);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          mergedMessages.push(msg);
+        }
+      };
+
+      appendUnique(current.messages || []);
+      appendUnique(activeSession.messages || []);
+      appendUnique([assistantMsg]);
+
       const merged: ChatSession = {
         ...current,
-        messages:
-          current.messages.length > 0
-            ? current.messages
-            : [...(activeSession.messages || []), assistantMsg],
+        messages: mergedMessages,
       };
 
       setActiveSession(merged);
@@ -112,7 +129,7 @@ export const Desktop = (): JSX.Element => {
       setIsStreaming(false);
       streamRef.current = null;
     },
-    [activeSession],
+    [activeSession, messageKey],
   );
 
   const handleSendQuery = useCallback(() => {
@@ -183,27 +200,37 @@ export const Desktop = (): JSX.Element => {
   const handleNewChat = useCallback(async () => {
     streamRef.current?.close();
     streamRef.current = null;
-    setStreamingAnswer("");
-    setLiveTrace([]);
-    setIsStreaming(false);
-    setQuery("");
-    setError(null);
-    const session = await createSession();
-    setActiveSession(session);
-    setSessions((prev) => [session, ...prev]);
+    try {
+      const session = await createSession();
+      setStreamingAnswer("");
+      setLiveTrace([]);
+      setIsStreaming(false);
+      setQuery("");
+      setError(null);
+      setActiveSession(session);
+      setSessions((prev) => [session, ...prev]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create a new chat session");
+    }
   }, []);
 
   const handleSelectSession = useCallback(async (session: ChatSession) => {
+    const prevActive = activeSession;
     streamRef.current?.close();
     streamRef.current = null;
-    setStreamingAnswer("");
-    setLiveTrace([]);
-    setIsStreaming(false);
-    setQuery("");
-    setError(null);
-    const full = await getSession(session.id);
-    setActiveSession(full);
-  }, []);
+    try {
+      const full = await getSession(session.id);
+      setStreamingAnswer("");
+      setLiveTrace([]);
+      setIsStreaming(false);
+      setQuery("");
+      setError(null);
+      setActiveSession(full);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load session");
+      setActiveSession(prevActive);
+    }
+  }, [activeSession]);
 
   const handleDeleteSession = useCallback(
     async (id: string) => {
@@ -227,9 +254,15 @@ export const Desktop = (): JSX.Element => {
   );
 
   const handleSettingsSave = useCallback(async (patch: Partial<AppSettings>) => {
-    await updateSettings(patch);
-    const fresh = await fetchSettings();
-    setAppSettings(fresh);
+    try {
+      await updateSettings(patch);
+      const fresh = await fetchSettings();
+      setAppSettings(fresh);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to save settings";
+      setError(message);
+      throw err;
+    }
   }, []);
 
   const handleUpload = useCallback(async (file: File): Promise<{ chunks_added: number }> => {

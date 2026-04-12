@@ -13,7 +13,7 @@ from loguru import logger
 
 from ..system.hardware import detect_hardware, estimate_vram_requirement
 from ..inference.base import InferenceBackendType
-from ..inference.model_registry import ModelRegistry
+from ..inference.model_registry import ModelMetadata, ModelRegistry
 
 
 @dataclass
@@ -160,7 +160,7 @@ class AdaptiveConfigGenerator:
         self,
         max_vram: float,
         min_context_length: int
-    ) -> Optional[dict]:
+    ) -> Optional[ModelMetadata]:
         """Select appropriate model based on constraints."""
         
         models = self.registry.list_models(
@@ -178,7 +178,7 @@ class AdaptiveConfigGenerator:
         
         return models[0]
     
-    def _calculate_gpu_layers(self, hw: dict, model: Optional[dict]) -> int:
+    def _calculate_gpu_layers(self, hw: dict, model: Optional[ModelMetadata]) -> int:
         """Calculate number of GPU layers to offload."""
         
         if hw['gpu_count'] == 0:
@@ -190,7 +190,7 @@ class AdaptiveConfigGenerator:
         
         # Estimate based on VRAM
         vram_available = hw['total_vram_gb'] * 0.8
-        model_vram = model.get('vram_gb', 5.0)
+        model_vram = float(getattr(model, "vram_requirement_gb", 5.0) or 5.0)
         
         if vram_available >= model_vram:
             # Full offload
@@ -220,12 +220,12 @@ class AdaptiveConfigGenerator:
     def _determine_context_length(
         self,
         hw: dict,
-        model: Optional[dict]
+        model: Optional[ModelMetadata]
     ) -> int:
         """Determine optimal context length."""
         
         if model:
-            max_context = model.get('context_length', 4096)
+            max_context = int(getattr(model, "context_length", 4096) or 4096)
         else:
             max_context = 4096
         

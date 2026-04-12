@@ -107,17 +107,16 @@ class OllamaBackend(InferenceBackend):
         
         gen_config = config or GenerationConfig()
         
-        # Update model parameters for this generation
-        self._chat_model.temperature = gen_config.temperature
-        self._chat_model.top_p = gen_config.top_p
-        self._chat_model.top_k = gen_config.top_k
-        self._chat_model.num_predict = gen_config.max_tokens
-        self._chat_model.repeat_penalty = gen_config.repeat_penalty
-        
-        if gen_config.stop_sequences:
-            self._chat_model.stop = gen_config.stop_sequences
-        
-        response = self._chat_model.invoke(prompt)
+        options = {
+            "temperature": gen_config.temperature,
+            "top_p": gen_config.top_p,
+            "top_k": gen_config.top_k,
+            "num_predict": gen_config.max_tokens,
+            "repeat_penalty": gen_config.repeat_penalty,
+            "stop": gen_config.stop_sequences or None,
+        }
+
+        response = self._chat_model.invoke(prompt, **options)
         return response.content if hasattr(response, 'content') else str(response)
     
     def stream_generate(
@@ -131,17 +130,16 @@ class OllamaBackend(InferenceBackend):
         
         gen_config = config or GenerationConfig()
         
-        # Update model parameters
-        self._chat_model.temperature = gen_config.temperature
-        self._chat_model.top_p = gen_config.top_p
-        self._chat_model.top_k = gen_config.top_k
-        self._chat_model.num_predict = gen_config.max_tokens
-        self._chat_model.repeat_penalty = gen_config.repeat_penalty
-        
-        if gen_config.stop_sequences:
-            self._chat_model.stop = gen_config.stop_sequences
-        
-        for chunk in self._chat_model.stream(prompt):
+        options = {
+            "temperature": gen_config.temperature,
+            "top_p": gen_config.top_p,
+            "top_k": gen_config.top_k,
+            "num_predict": gen_config.max_tokens,
+            "repeat_penalty": gen_config.repeat_penalty,
+            "stop": gen_config.stop_sequences or None,
+        }
+
+        for chunk in self._chat_model.stream(prompt, **options):
             if hasattr(chunk, 'content'):
                 yield chunk.content
             else:
@@ -158,17 +156,16 @@ class OllamaBackend(InferenceBackend):
         
         gen_config = config or GenerationConfig()
         
-        # Update model parameters
-        self._chat_model.temperature = gen_config.temperature
-        self._chat_model.top_p = gen_config.top_p
-        self._chat_model.top_k = gen_config.top_k
-        self._chat_model.num_predict = gen_config.max_tokens
-        self._chat_model.repeat_penalty = gen_config.repeat_penalty
-        
-        if gen_config.stop_sequences:
-            self._chat_model.stop = gen_config.stop_sequences
-        
-        response = await self._chat_model.ainvoke(prompt)
+        options = {
+            "temperature": gen_config.temperature,
+            "top_p": gen_config.top_p,
+            "top_k": gen_config.top_k,
+            "num_predict": gen_config.max_tokens,
+            "repeat_penalty": gen_config.repeat_penalty,
+            "stop": gen_config.stop_sequences or None,
+        }
+
+        response = await self._chat_model.ainvoke(prompt, **options)
         return response.content if hasattr(response, 'content') else str(response)
     
     async def astream_generate(
@@ -182,17 +179,16 @@ class OllamaBackend(InferenceBackend):
         
         gen_config = config or GenerationConfig()
         
-        # Update model parameters
-        self._chat_model.temperature = gen_config.temperature
-        self._chat_model.top_p = gen_config.top_p
-        self._chat_model.top_k = gen_config.top_k
-        self._chat_model.num_predict = gen_config.max_tokens
-        self._chat_model.repeat_penalty = gen_config.repeat_penalty
-        
-        if gen_config.stop_sequences:
-            self._chat_model.stop = gen_config.stop_sequences
-        
-        async for chunk in self._chat_model.astream(prompt):
+        options = {
+            "temperature": gen_config.temperature,
+            "top_p": gen_config.top_p,
+            "top_k": gen_config.top_k,
+            "num_predict": gen_config.max_tokens,
+            "repeat_penalty": gen_config.repeat_penalty,
+            "stop": gen_config.stop_sequences or None,
+        }
+
+        async for chunk in self._chat_model.astream(prompt, **options):
             if hasattr(chunk, 'content'):
                 yield chunk.content
             else:

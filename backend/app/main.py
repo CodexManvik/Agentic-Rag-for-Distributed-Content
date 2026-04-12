@@ -1,5 +1,6 @@
 from typing import Any, cast
 import asyncio
+import hashlib
 import json
 import time
 import shutil, tempfile
@@ -50,6 +51,7 @@ _health_state: dict[str, str] = {"status": "starting", "reason": "initializing"}
 
 # Global session manager instance
 session_manager: SessionManager | None = None
+MAX_SESSION_LIST_LIMIT = 100
 
 
 def _to_session_state_schema(session: SessionState) -> SessionStateSchema:
@@ -267,8 +269,20 @@ def update_settings(payload: dict) -> dict:
             continue
         try:
             current_type = type(getattr(settings, key))
-            setattr(settings, key, current_type(value))
-            updated[key] = value
+            if current_type is bool and isinstance(value, str):
+                normalized = value.strip().lower()
+                if normalized in {"true", "1", "yes", "y", "on"}:
+                    parsed_value = True
+                elif normalized in {"false", "0", "no", "n", "off"}:
+                    parsed_value = False
+                else:
+                    raise ValueError(f"Invalid boolean string: {value}")
+                setattr(settings, key, parsed_value)
+                updated[key] = parsed_value
+            else:
+                cast_value = current_type(value)
+                setattr(settings, key, cast_value)
+                updated[key] = cast_value
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"Invalid value for '{key}': {exc}")
     return {"updated": updated}
@@ -385,8 +399,9 @@ async def chat_stream(
     hide_reasoning: bool = True,
     session_id: str | None = None
 ) -> StreamingResponse:
+    query_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()[:16]
     session_info = f" session_id: {session_id}" if session_id else ""
-    logger.info(f"📨 /chat/stream endpoint called with query: {query[:100]}..." + (f" model: {model}" if model else "") + session_info)
+    logger.info(f"📨 /chat/stream endpoint called (query_hash={query_hash})" + (f" model: {model}" if model else "") + session_info)
     
     # Validate session if provided
     session_state = None
@@ -670,7 +685,7 @@ def create_session(request: CreateSessionRequest) -> CreateSessionResponse:
         )
     except Exception as exc:
         logger.error(f"❌ Failed to create session: {exc}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 
@@ -692,7 +707,7 @@ def get_session_stats() -> SessionStatsResponse:
         )
     except Exception as exc:
         logger.error(f"❌ Failed to get session stats: {exc}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/sessions/{session_id}", response_model=SessionStateSchema)
@@ -711,7 +726,7 @@ def get_session(session_id: str) -> SessionStateSchema:
         raise
     except Exception as exc:
         logger.opt(exception=True).error("❌ Failed to get session {}: {}", session_id, exc)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.put("/sessions/{session_id}", response_model=SessionStateSchema)
@@ -743,7 +758,7 @@ def update_session(session_id: str, request: UpdateSessionRequest) -> SessionSta
         raise
     except Exception as exc:
         logger.opt(exception=True).error("❌ Failed to update session {}: {}", session_id, exc)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.delete("/sessions/{session_id}")
@@ -764,7 +779,7 @@ def delete_session(session_id: str) -> dict[str, str]:
         raise
     except Exception as exc:
         logger.error(f"❌ Failed to delete session {session_id}: {exc}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/sessions", response_model=SessionListResponse)
@@ -773,6 +788,14 @@ def list_sessions(user_id: str | None = None, limit: int = 20, offset: int = 0) 
     try:
         if not session_manager:
             raise HTTPException(status_code=500, detail="Session manager not initialized")
+
+        if limit <= 0 or limit > MAX_SESSION_LIST_LIMIT:
+            raise HTTPException(
+                status_code=400,
+                detail=f"limit must be between 1 and {MAX_SESSION_LIST_LIMIT}",
+            )
+        if offset < 0:
+            raise HTTPException(status_code=400, detail="offset must be >= 0")
         
         sessions = session_manager.list_sessions(
             user_id=user_id,
@@ -790,8 +813,10 @@ def list_sessions(user_id: str | None = None, limit: int = 20, offset: int = 0) 
             limit=limit,
             offset=offset
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.opt(exception=True).error("❌ Failed to list sessions: {}", exc)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 

@@ -15,6 +15,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 BASE_URL = "http://localhost:8000"
 TEST_USER_ID = "test_user"
+REQUEST_TIMEOUT_SECONDS = 30
+
+
+def _print_response_body(response: requests.Response) -> None:
+    try:
+        print(f"Response: {json.dumps(response.json(), indent=2)}")
+    except ValueError:
+        print(f"Response (non-JSON): {response.text[:1000]}")
 
 
 def print_test_header(test_name: str):
@@ -40,9 +48,9 @@ def test_create_session():
         }
     }
     
-    response = requests.post(f"{BASE_URL}/sessions", json=data)
+    response = requests.post(f"{BASE_URL}/sessions", json=data, timeout=REQUEST_TIMEOUT_SECONDS)
     print(f"Status: {response.status_code}")
-    print(f"Response: {json.dumps(response.json(), indent=2)}")
+    _print_response_body(response)
     
     if response.status_code == 200:
         return response.json()["session_id"]
@@ -53,9 +61,9 @@ def test_get_session(session_id: str):
     """Test getting session by ID."""
     print_test_header("Get Session")
     
-    response = requests.get(f"{BASE_URL}/sessions/{session_id}")
+    response = requests.get(f"{BASE_URL}/sessions/{session_id}", timeout=REQUEST_TIMEOUT_SECONDS)
     print(f"Status: {response.status_code}")
-    print(f"Response: {json.dumps(response.json(), indent=2)}")
+    _print_response_body(response)
 
 
 def test_update_session(session_id: str):
@@ -67,27 +75,27 @@ def test_update_session(session_id: str):
         "metadata": {"updated": True, "test": "value"}
     }
     
-    response = requests.put(f"{BASE_URL}/sessions/{session_id}", json=data)
+    response = requests.put(f"{BASE_URL}/sessions/{session_id}", json=data, timeout=REQUEST_TIMEOUT_SECONDS)
     print(f"Status: {response.status_code}")
-    print(f"Response: {json.dumps(response.json(), indent=2)}")
+    _print_response_body(response)
 
 
 def test_list_sessions():
     """Test listing sessions."""
     print_test_header("List Sessions")
     
-    response = requests.get(f"{BASE_URL}/sessions?user_id={TEST_USER_ID}")
+    response = requests.get(f"{BASE_URL}/sessions?user_id={TEST_USER_ID}", timeout=REQUEST_TIMEOUT_SECONDS)
     print(f"Status: {response.status_code}")
-    print(f"Response: {json.dumps(response.json(), indent=2)}")
+    _print_response_body(response)
 
 
 def test_session_stats():
     """Test getting session stats."""
     print_test_header("Session Stats")
     
-    response = requests.get(f"{BASE_URL}/sessions/stats")
+    response = requests.get(f"{BASE_URL}/sessions/stats", timeout=REQUEST_TIMEOUT_SECONDS)
     print(f"Status: {response.status_code}")
-    print(f"Response: {json.dumps(response.json(), indent=2)}")
+    _print_response_body(response)
 
 
 def test_chat_with_session(session_id: str):
@@ -99,7 +107,7 @@ def test_chat_with_session(session_id: str):
         "session_id": session_id
     }
     
-    response = requests.post(f"{BASE_URL}/chat", json=data)
+    response = requests.post(f"{BASE_URL}/chat", json=data, timeout=REQUEST_TIMEOUT_SECONDS)
     print(f"Status: {response.status_code}")
     if response.status_code == 200:
         # Don't print full response as it can be very long
@@ -109,16 +117,16 @@ def test_chat_with_session(session_id: str):
         print(f"Session ID: {response_data.get('session_id')}")
         print(f"Confidence: {response_data.get('confidence')}")
     else:
-        print(f"Error Response: {json.dumps(response.json(), indent=2)}")
+        _print_response_body(response)
 
 
 def test_delete_session(session_id: str):
     """Test deleting session."""
     print_test_header("Delete Session")
     
-    response = requests.delete(f"{BASE_URL}/sessions/{session_id}")
+    response = requests.delete(f"{BASE_URL}/sessions/{session_id}", timeout=REQUEST_TIMEOUT_SECONDS)
     print(f"Status: {response.status_code}")
-    print(f"Response: {json.dumps(response.json(), indent=2)}")
+    _print_response_body(response)
 
 
 def check_server_health():
@@ -131,6 +139,9 @@ def check_server_health():
 
 
 def main():
+    global BASE_URL
+    BASE_URL = os.getenv("TEST_BASE_URL", BASE_URL).rstrip("/")
+
     print("Session Management Endpoints Test")
     print(f"Testing against: {BASE_URL}")
     print(f"Current time: {datetime.now()}")

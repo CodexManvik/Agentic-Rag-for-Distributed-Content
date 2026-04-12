@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AppSettings } from "../../../../api";
 
 interface SettingsPanelProps {
@@ -105,6 +105,15 @@ export const SettingsPanel = ({ settings, models, onSave, onClose }: SettingsPan
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const saveTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current !== null) {
+        window.clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleSave = async () => {
     setSaving(true);
@@ -112,7 +121,10 @@ export const SettingsPanel = ({ settings, models, onSave, onClose }: SettingsPan
     try {
       await onSave(local);
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      if (saveTimeoutRef.current !== null) {
+        window.clearTimeout(saveTimeoutRef.current);
+      }
+      saveTimeoutRef.current = window.setTimeout(() => setSaved(false), 2000);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -124,13 +136,14 @@ export const SettingsPanel = ({ settings, models, onSave, onClose }: SettingsPan
     const value = local[field.key] ?? settings[field.key];
 
     if (field.type === "select") {
+      const options = field.options ?? [];
       return (
         <select
           className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm text-slate-700 [font-family:'Plus_Jakarta_Sans',Helvetica] bg-slate-50 outline-none focus:border-indigo-400 transition-colors"
           value={String(value)}
           onChange={(e) => setLocal((prev) => ({ ...prev, [field.key]: e.target.value }))}
         >
-          {field.options!.map((opt) => (
+          {options.map((opt) => (
             <option key={opt} value={opt}>
               {opt}
             </option>

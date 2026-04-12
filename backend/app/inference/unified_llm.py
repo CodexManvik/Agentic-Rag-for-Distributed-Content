@@ -55,8 +55,9 @@ class UnifiedLLM:
         
         # Create backend
         self._initialize_backend()
-        
-        logger.info(f"Initialized UnifiedLLM with {config.backend_type} backend")
+
+        resolved_backend = getattr(self.backend, "backend_type", None)
+        logger.info(f"Initialized UnifiedLLM with {resolved_backend} backend")
     
     def _initialize_backend(self):
         """Initialize the inference backend."""

@@ -43,6 +43,7 @@ class LocalModelBackend(InferenceBackend):
             config: Configuration dictionary (same as LlamaCppBackend for now)
         """
         super().__init__(config)
+        self._model_info: Optional[ModelInfo] = None
         
         if not LLAMA_CPP_AVAILABLE:
             raise RuntimeError(

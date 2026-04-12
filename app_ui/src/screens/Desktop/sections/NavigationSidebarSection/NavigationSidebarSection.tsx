@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import type { ChatSession } from "../../../../api";
 
 interface NavigationSidebarSectionProps {
@@ -26,6 +26,15 @@ export const NavigationSidebarSection = ({
   const [uploadMessage, setUploadMessage] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadResetTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (uploadResetTimerRef.current !== null) {
+        window.clearTimeout(uploadResetTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -41,7 +50,10 @@ export const NavigationSidebarSection = ({
         const result = await onUpload(file);
         setUploadState("done");
         setUploadMessage(`✓ ${file.name} — ${result.chunks_added} chunks added`);
-        setTimeout(() => setUploadState("idle"), 4000);
+        if (uploadResetTimerRef.current !== null) {
+          window.clearTimeout(uploadResetTimerRef.current);
+        }
+        uploadResetTimerRef.current = window.setTimeout(() => setUploadState("idle"), 4000);
       } catch (err) {
         setUploadState("error");
         setUploadMessage(err instanceof Error ? err.message : "Upload failed");
@@ -124,6 +136,15 @@ export const NavigationSidebarSection = ({
                       session.id === activeSessionId ? "bg-indigo-50 border-l-2 border-indigo-600" : "hover:bg-slate-100 border-l-2 border-transparent"
                     }`}
                     onClick={() => onSelectSession(session)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onSelectSession(session);
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    aria-current={session.id === activeSessionId ? "page" : undefined}
                   >
                     <div className="flex-1 min-w-0">
                       <p
@@ -142,7 +163,8 @@ export const NavigationSidebarSection = ({
                         e.stopPropagation();
                         onDeleteSession(session.id);
                       }}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-100 text-slate-400 hover:text-red-500"
+                      className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity p-1 rounded hover:bg-red-100 text-slate-400 hover:text-red-500"
+                      aria-label={`Delete session ${session.title || "Untitled"}`}
                     >
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -161,6 +183,22 @@ export const NavigationSidebarSection = ({
               onDragLeave={() => setIsDragging(false)}
               onDrop={onDrop}
               onClick={() => fileInputRef.current?.click()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setIsDragging(true);
+                  fileInputRef.current?.click();
+                }
+              }}
+              onKeyUp={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  setIsDragging(false);
+                }
+              }}
+              onFocus={() => setIsDragging(true)}
+              onBlur={() => setIsDragging(false)}
+              role="button"
+              tabIndex={0}
               className={`flex flex-col items-center justify-center gap-3 p-6 rounded-2xl border-2 border-dashed cursor-pointer transition-all ${
                 isDragging
                   ? "border-indigo-400 bg-indigo-50"

@@ -396,6 +396,7 @@ export const ArticleDetailSection = ({
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
+                  if (!query.trim()) return;
                   onSend();
                 }
               }}

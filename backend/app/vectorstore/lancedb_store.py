@@ -125,6 +125,14 @@ class LanceDBVectorStore:
             "Unsupported embedding provider. "
             "Provide a callable or an object with embed_documents/embed_query."
         )
+
+    def _safe_filter_field(self, field: str) -> str:
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", field):
+            raise ValueError(f"Unsafe metadata filter key: {field}")
+        return field
+
+    def _escape_filter_string(self, value: str) -> str:
+        return value.replace("'", "''")
     
     def _ensure_table(self) -> Optional[Table]:
         """Ensure table exists and return it."""
@@ -263,14 +271,21 @@ class LanceDBVectorStore:
         filter_conditions = []
         
         if knowledge_base:
-            filter_conditions.append(f"knowledge_base = '{knowledge_base}'")
+            escaped_kb = self._escape_filter_string(knowledge_base)
+            filter_conditions.append(f"knowledge_base = '{escaped_kb}'")
         
         if metadata_filter:
             for key, value in metadata_filter.items():
+                safe_key = self._safe_filter_field(str(key))
                 if isinstance(value, str):
-                    filter_conditions.append(f"{key} = '{value}'")
+                    escaped_value = self._escape_filter_string(value)
+                    filter_conditions.append(f"{safe_key} = '{escaped_value}'")
+                elif value is None:
+                    filter_conditions.append(f"{safe_key} IS NULL")
+                elif isinstance(value, bool):
+                    filter_conditions.append(f"{safe_key} = {str(value).upper()}")
                 else:
-                    filter_conditions.append(f"{key} = {value}")
+                    filter_conditions.append(f"{safe_key} = {value}")
         
         # Execute search
         try:
@@ -314,7 +329,8 @@ class LanceDBVectorStore:
                     "id": result.get("id"),
                     "text": result.get("text"),
                     "metadata": metadata,
-                    "score": result.get("_distance", 0.0),  # LanceDB uses _distance
+                    "score": 1.0 / (1.0 + float(result.get("_distance", 0.0))),
+                    "distance": float(result.get("_distance", 0.0)),
                 })
             
             logger.debug(f"Found {len(formatted_results)} results for query")
@@ -366,7 +382,7 @@ class LanceDBVectorStore:
                             "id": row.get("id"),
                             "text": row.get("text"),
                             "metadata": metadata,
-                            "score": 1.0 / (1.0 + score),
+                            "score": float(score),
                         }
                     )
 
@@ -418,10 +434,15 @@ class LanceDBVectorStore:
                 self.drop_table()
                 return 0
 
+            escaped_kb = self._escape_filter_string(knowledge_base)
+            before_count = self.count_documents(knowledge_base)
+
             # Try to delete by filter (using flattened schema)
-            table.delete(f"knowledge_base = '{knowledge_base}'")
+            table.delete(f"knowledge_base = '{escaped_kb}'")
+            after_count = self.count_documents(knowledge_base)
+            deleted = max(before_count - after_count, 0)
             logger.info(f"Deleted documents from knowledge base: {knowledge_base}")
-            return 0
+            return deleted
             
         except Exception as e:
             # If delete fails due to schema mismatch, drop the entire table
