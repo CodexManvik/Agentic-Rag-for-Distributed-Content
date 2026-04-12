@@ -1,4 +1,7 @@
-from typing import Any
+from operator import add
+from typing import Annotated, Any, Literal
+
+from langchain_core.messages import BaseMessage
 from typing_extensions import NotRequired, TypedDict
 
 
@@ -39,19 +42,19 @@ class RetrievalQuality(TypedDict):
     reason: str
 
 
-class SynthesisOutput(TypedDict):
+class LegacySynthesisOutput(TypedDict):
     answer: str
     cited_indices: list[int]
     confidence: float
     abstain_reason: str | None
 
 
-class NavigatorState(TypedDict):
+class AgentState(TypedDict):
     query: str
     original_query: str
     selected_model: str  # Ollama model to use for this workflow execution
     sub_queries: list[str]
-    retrieved_chunks: list[RetrievedChunk]
+    retrieved_chunks: Annotated[list[RetrievedChunk], add]
     final_response: str
     citations: list[Citation]
     retrieval_quality: RetrievalQuality
@@ -63,7 +66,16 @@ class NavigatorState(TypedDict):
     abstain_reason: str | None
     confidence: float
     cited_indices: list[int]
-    synthesis_output: SynthesisOutput
+    synthesis_output: LegacySynthesisOutput
     trace: list[TraceEvent]
     stage_timings: dict[str, float]
     stage_timestamps: dict[str, dict[str, Any]]
+    messages: NotRequired[Annotated[list[BaseMessage], add]]
+    _selected_context_chunks: NotRequired[list[dict[str, Any]]]
+    next_step: NotRequired[Literal["RetrievalAgent", "SynthesisAgent", "AdequacyAgent", "FINISH"]]
+    short_circuited: NotRequired[bool]
+
+
+# Compatibility aliases for incremental migration to LangGraph AgentState.
+NavigatorState = AgentState
+SynthesisOutput = LegacySynthesisOutput

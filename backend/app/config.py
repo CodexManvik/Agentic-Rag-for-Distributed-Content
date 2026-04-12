@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_chat_model: str = "llama3.2:3b"
     ollama_embedding_model: str = "nomic-embed-text:latest"
+    lancedb_embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     chroma_collection_name: str = "knowledge_base"
     chroma_persist_directory: str = "./chroma_data"
     retrieval_initial_k: int = 6
@@ -21,7 +22,7 @@ class Settings(BaseSettings):
     bm25_cache_enabled: bool = True
     bm25_weight: float = 0.3
     vector_weight: float = 0.7
-    retrieval_min_score: float = 0.65
+    retrieval_min_score: float = 0.0
     retrieval_min_chunks: int = 2
     retrieval_min_source_diversity: int = 1
     retrieval_hard_query_min_score_boost: float = 0.08
@@ -35,9 +36,12 @@ class Settings(BaseSettings):
     retrieval_langgraph_source_boost: float = 1.2
     rerank_enabled: bool = True
     low_latency_skip_overlap_check: bool = True
-    debug_trace_enabled: bool = False
+    debug_trace_enabled: bool = True
     max_retrieval_retries: int = 0
     max_validation_retries: int = 0
+    enable_short_circuit_routing: bool = True
+    short_circuit_confidence_threshold: float = 0.7
+    short_circuit_use_heuristics_only: bool = False
 
     chunk_size: int = 700
     chunk_overlap: int = 100

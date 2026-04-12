@@ -1,0 +1,317 @@
+{
+  "run_timestamp": "2026-04-09T14:19:52.278027+00:00",
+  "resource_pack_name": "hackathon_public_pack_v2",
+  "resource_pack_path": "resources\\resource_pack.yaml",
+  "knowledge_base": "hackathon_demo",
+  "processed_urls": [
+    "https://support.atlassian.com/confluence-cloud/docs/make-a-space-public/",
+    "https://support.atlassian.com/confluence-cloud/docs/set-up-and-manage-public-links/",
+    "https://support.atlassian.com/confluence-cloud/docs/manage-public-links-across-confluence-cloud/",
+    "https://support.atlassian.com/confluence-cloud/docs/how-secure-are-public-links/",
+    "https://confluence.atlassian.com/doc/spaces-139459.html",
+    "https://confluence.atlassian.com/doc/create-and-edit-pages-139459.html",
+    "https://github.com/langchain-ai/langchain/blob/master/README.md",
+    "https://github.com/langchain-ai/langchain/blob/master/libs/langchain/README.md",
+    "https://github.com/langchain-ai/langgraph/blob/main/README.md",
+    "https://github.com/langchain-ai/langgraph/blob/main/libs/langgraph/README.md",
+    "https://github.com/langchain-ai/langgraph/blob/main/examples/README.md",
+    "https://github.com/chroma-core/chroma/blob/main/README.md",
+    "https://github.com/facebookresearch/faiss/blob/main/README.md",
+    "https://github.com/UKPLab/sentence-transformers/blob/master/README.md",
+    "https://github.com/openai/openai-cookbook/blob/main/README.md",
+    "https://github.com/openai/openai-cookbook/blob/main/articles/related_resources.md",
+    "https://github.com/openai/openai-cookbook/blob/main/examples/Embedding_long_inputs.ipynb",
+    "https://github.com/run-llama/llama_index/blob/main/README.md",
+    "https://github.com/beir-cellar/beir/blob/main/README.md",
+    "https://github.com/explodinggradients/ragas/blob/main/README.md"
+  ],
+  "processed_pdfs": [
+    "C:\\Project\\agentic_rag\\Agentic-Rag-for-Distributed-Content\\Hackathon_Problem_Statement_SmartKnowledgeNavigator.docx.pdf",
+    "https://arxiv.org/pdf/2005.11401.pdf",
+    "https://arxiv.org/pdf/2312.10997.pdf",
+    "https://arxiv.org/pdf/2310.11511.pdf",
+    "https://arxiv.org/pdf/2309.07864.pdf",
+    "https://arxiv.org/pdf/2201.11903.pdf",
+    "https://arxiv.org/pdf/1706.03762.pdf",
+    "https://arxiv.org/pdf/2307.03172.pdf",
+    "https://arxiv.org/pdf/2401.18059.pdf",
+    "https://arxiv.org/pdf/2404.07143.pdf",
+    "https://arxiv.org/pdf/2402.05102.pdf"
+  ],
+  "processed_docs": [
+    "C:\\Project\\agentic_rag\\Agentic-Rag-for-Distributed-Content\\backend\\resources\\architecture_notes.md",
+    "C:\\Project\\agentic_rag\\Agentic-Rag-for-Distributed-Content\\backend\\resources\\rag_concepts.md"
+  ],
+  "documents_processed": 33,
+  "chunks_added": 2545,
+  "errors": [],
+  "total_duration_seconds": 333.939,
+  "success_count": 33,
+  "failed_count": 0,
+  "source_results": [
+    {
+      "source": "https://support.atlassian.com/confluence-cloud/docs/make-a-space-public/",
+      "source_type": "web",
+      "domain": "support.atlassian.com",
+      "status": "ok",
+      "chunks_added": 10,
+      "error": null
+    },
+    {
+      "source": "https://support.atlassian.com/confluence-cloud/docs/set-up-and-manage-public-links/",
+      "source_type": "web",
+      "domain": "support.atlassian.com",
+      "status": "ok",
+      "chunks_added": 17,
+      "error": null
+    },
+    {
+      "source": "https://support.atlassian.com/confluence-cloud/docs/manage-public-links-across-confluence-cloud/",
+      "source_type": "web",
+      "domain": "support.atlassian.com",
+      "status": "ok",
+      "chunks_added": 18,
+      "error": null
+    },
+    {
+      "source": "https://support.atlassian.com/confluence-cloud/docs/how-secure-are-public-links/",
+      "source_type": "web",
+      "domain": "support.atlassian.com",
+      "status": "ok",
+      "chunks_added": 25,
+      "error": null
+    },
+    {
+      "source": "https://confluence.atlassian.com/doc/spaces-139459.html",
+      "source_type": "web",
+      "domain": "confluence.atlassian.com",
+      "status": "ok",
+      "chunks_added": 8,
+      "error": null
+    },
+    {
+      "source": "https://confluence.atlassian.com/doc/create-and-edit-pages-139459.html",
+      "source_type": "web",
+      "domain": "confluence.atlassian.com",
+      "status": "ok",
+      "chunks_added": 8,
+      "error": null
+    },
+    {
+      "source": "https://github.com/langchain-ai/langchain/blob/master/README.md",
+      "source_type": "web",
+      "domain": "github.com",
+      "status": "ok",
+      "chunks_added": 10,
+      "error": null
+    },
+    {
+      "source": "https://github.com/langchain-ai/langchain/blob/master/libs/langchain/README.md",
+      "source_type": "web",
+      "domain": "github.com",
+      "status": "ok",
+      "chunks_added": 4,
+      "error": null
+    },
+    {
+      "source": "https://github.com/langchain-ai/langgraph/blob/main/README.md",
+      "source_type": "web",
+      "domain": "github.com",
+      "status": "ok",
+      "chunks_added": 9,
+      "error": null
+    },
+    {
+      "source": "https://github.com/langchain-ai/langgraph/blob/main/libs/langgraph/README.md",
+      "source_type": "web",
+      "domain": "github.com",
+      "status": "ok",
+      "chunks_added": 9,
+      "error": null
+    },
+    {
+      "source": "https://github.com/langchain-ai/langgraph/blob/main/examples/README.md",
+      "source_type": "web",
+      "domain": "github.com",
+      "status": "ok",
+      "chunks_added": 2,
+      "error": null
+    },
+    {
+      "source": "https://github.com/chroma-core/chroma/blob/main/README.md",
+      "source_type": "web",
+      "domain": "github.com",
+      "status": "ok",
+      "chunks_added": 5,
+      "error": null
+    },
+    {
+      "source": "https://github.com/facebookresearch/faiss/blob/main/README.md",
+      "source_type": "web",
+      "domain": "github.com",
+      "status": "ok",
+      "chunks_added": 11,
+      "error": null
+    },
+    {
+      "source": "https://github.com/UKPLab/sentence-transformers/blob/master/README.md",
+      "source_type": "web",
+      "domain": "github.com",
+      "status": "ok",
+      "chunks_added": 20,
+      "error": null
+    },
+    {
+      "source": "https://github.com/openai/openai-cookbook/blob/main/README.md",
+      "source_type": "web",
+      "domain": "github.com",
+      "status": "ok",
+      "chunks_added": 3,
+      "error": null
+    },
+    {
+      "source": "https://github.com/openai/openai-cookbook/blob/main/articles/related_resources.md",
+      "source_type": "web",
+      "domain": "github.com",
+      "status": "ok",
+      "chunks_added": 16,
+      "error": null
+    },
+    {
+      "source": "https://github.com/openai/openai-cookbook/blob/main/examples/Embedding_long_inputs.ipynb",
+      "source_type": "web",
+      "domain": "github.com",
+      "status": "ok",
+      "chunks_added": 2,
+      "error": null
+    },
+    {
+      "source": "https://github.com/run-llama/llama_index/blob/main/README.md",
+      "source_type": "web",
+      "domain": "github.com",
+      "status": "ok",
+      "chunks_added": 16,
+      "error": null
+    },
+    {
+      "source": "https://github.com/beir-cellar/beir/blob/main/README.md",
+      "source_type": "web",
+      "domain": "github.com",
+      "status": "ok",
+      "chunks_added": 38,
+      "error": null
+    },
+    {
+      "source": "https://github.com/explodinggradients/ragas/blob/main/README.md",
+      "source_type": "web",
+      "domain": "github.com",
+      "status": "ok",
+      "chunks_added": 11,
+      "error": null
+    },
+    {
+      "source": "C:\\Project\\agentic_rag\\Agentic-Rag-for-Distributed-Content\\Hackathon_Problem_Statement_SmartKnowledgeNavigator.docx.pdf",
+      "source_type": "pdf_local",
+      "domain": "local",
+      "status": "ok",
+      "chunks_added": 7,
+      "error": null
+    },
+    {
+      "source": "https://arxiv.org/pdf/2005.11401.pdf",
+      "source_type": "pdf_url",
+      "domain": "arxiv.org",
+      "status": "ok",
+      "chunks_added": 143,
+      "error": null
+    },
+    {
+      "source": "https://arxiv.org/pdf/2312.10997.pdf",
+      "source_type": "pdf_url",
+      "domain": "arxiv.org",
+      "status": "ok",
+      "chunks_added": 222,
+      "error": null
+    },
+    {
+      "source": "https://arxiv.org/pdf/2310.11511.pdf",
+      "source_type": "pdf_url",
+      "domain": "arxiv.org",
+      "status": "ok",
+      "chunks_added": 216,
+      "error": null
+    },
+    {
+      "source": "https://arxiv.org/pdf/2309.07864.pdf",
+      "source_type": "pdf_url",
+      "domain": "arxiv.org",
+      "status": "ok",
+      "chunks_added": 708,
+      "error": null
+    },
+    {
+      "source": "https://arxiv.org/pdf/2201.11903.pdf",
+      "source_type": "pdf_url",
+      "domain": "arxiv.org",
+      "status": "ok",
+      "chunks_added": 276,
+      "error": null
+    },
+    {
+      "source": "https://arxiv.org/pdf/1706.03762.pdf",
+      "source_type": "pdf_url",
+      "domain": "arxiv.org",
+      "status": "ok",
+      "chunks_added": 83,
+      "error": null
+    },
+    {
+      "source": "https://arxiv.org/pdf/2307.03172.pdf",
+      "source_type": "pdf_url",
+      "domain": "arxiv.org",
+      "status": "ok",
+      "chunks_added": 134,
+      "error": null
+    },
+    {
+      "source": "https://arxiv.org/pdf/2401.18059.pdf",
+      "source_type": "pdf_url",
+      "domain": "arxiv.org",
+      "status": "ok",
+      "chunks_added": 159,
+      "error": null
+    },
+    {
+      "source": "https://arxiv.org/pdf/2404.07143.pdf",
+      "source_type": "pdf_url",
+      "domain": "arxiv.org",
+      "status": "ok",
+      "chunks_added": 91,
+      "error": null
+    },
+    {
+      "source": "https://arxiv.org/pdf/2402.05102.pdf",
+      "source_type": "pdf_url",
+      "domain": "arxiv.org",
+      "status": "ok",
+      "chunks_added": 193,
+      "error": null
+    },
+    {
+      "source": "C:\\Project\\agentic_rag\\Agentic-Rag-for-Distributed-Content\\backend\\resources\\architecture_notes.md",
+      "source_type": "document",
+      "domain": "local",
+      "status": "ok",
+      "chunks_added": 42,
+      "error": null
+    },
+    {
+      "source": "C:\\Project\\agentic_rag\\Agentic-Rag-for-Distributed-Content\\backend\\resources\\rag_concepts.md",
+      "source_type": "document",
+      "domain": "local",
+      "status": "ok",
+      "chunks_added": 29,
+      "error": null
+    }
+  ]
+}

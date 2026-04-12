@@ -1,209 +1,289 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   fetchModels,
   streamChat,
-  type StreamCitation,
+  fetchSettings,
+  updateSettings,
+  ingestFile,
+  listSessions,
+  getSession,
+  createSession,
+  deleteSession,
   type StreamCompletePayload,
   type StreamTraceEvent,
+  type AppSettings,
+  type ChatMessage,
+  type ChatSession,
 } from "../../api";
 import { ArticleDetailSection } from "./sections/ArticleDetailSection";
 import { NavigationSidebarSection } from "./sections/NavigationSidebarSection";
+import { SettingsPanel } from "./sections/SettingsPanel";
 
 export const Desktop = (): JSX.Element => {
   const [models, setModels] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState("");
   const [query, setQuery] = useState("");
-  const [answer, setAnswer] = useState("");
-  const [sources, setSources] = useState<StreamCitation[]>([]);
-  const [trace, setTrace] = useState<StreamTraceEvent[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [libraryItems, setLibraryItems] = useState<Array<{ id: string; text: string; active: boolean }>>([]);
+  const [showSettings, setShowSettings] = useState(false);
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+  const [sidebarTab, setSidebarTab] = useState<"history" | "upload">("history");
+
+  // Session management
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSession, setActiveSession] = useState<ChatSession | null>(null);
+
+  // Live streaming state (pre-commit)
+  const [streamingAnswer, setStreamingAnswer] = useState("");
+  const [liveTrace, setLiveTrace] = useState<StreamTraceEvent[]>([]);
+
   const streamRef = useRef<EventSource | null>(null);
 
+  // Load everything on mount
   useEffect(() => {
     let mounted = true;
-    const loadModels = async () => {
+    const init = async () => {
       try {
-        const modelList = await fetchModels();
-        if (!mounted) {
-          return;
-        }
+        const [modelList, settingsData, sessionList] = await Promise.all([
+          fetchModels(),
+          fetchSettings(),
+          listSessions(),
+        ]);
+        if (!mounted) return;
         setModels(modelList);
         setSelectedModel(modelList[0]);
+        setAppSettings(settingsData);
+        setSessions(sessionList);
+        if (sessionList.length > 0) {
+          setActiveSession(sessionList[0]);
+        } else {
+          const created = await createSession();
+          if (!mounted) return;
+          setSessions([created]);
+          setActiveSession(created);
+        }
         setError(null);
       } catch (err) {
-        if (!mounted) {
-          return;
-        }
-        setError(err instanceof Error ? err.message : "Failed to load models");
+        if (!mounted) return;
+        setError(err instanceof Error ? err.message : "Failed to connect to backend");
       }
     };
-    loadModels();
-
+    init();
     return () => {
       mounted = false;
-      if (streamRef.current) {
-        streamRef.current.close();
-      }
+      streamRef.current?.close();
     };
   }, []);
 
-  const handleStreamComplete = (payload: StreamCompletePayload) => {
-    setAnswer(payload.answer || "");
-    setSources(Array.isArray(payload.citations) ? payload.citations : []);
-    setTrace(Array.isArray(payload.trace) ? payload.trace : []);
-    if (Array.isArray(payload.sub_queries)) {
-      setLibraryItems((prev) => {
-        const fromSubQueries = payload.sub_queries.map((item, index) => ({
-          id: `sub-${Date.now()}-${index}`,
-          text: item,
-          active: false,
-        }));
-        return [...prev.map((item) => ({ ...item, active: false })), ...fromSubQueries].slice(-16);
-      });
-    }
-    setIsStreaming(false);
-    streamRef.current = null;
-  };
+  const handleStreamComplete = useCallback(
+    async (payload: StreamCompletePayload) => {
+      if (!activeSession) return;
+      const assistantMsg: ChatMessage = {
+        id: `msg-${Date.now()}`,
+        role: "assistant",
+        content: payload.answer || "",
+        citations: Array.isArray(payload.citations) ? payload.citations : [],
+        trace: Array.isArray(payload.trace) ? payload.trace : [],
+        stage_timings: payload.stage_timings || {},
+        confidence: payload.confidence,
+        abstained: payload.abstained,
+        sub_queries: payload.sub_queries || [],
+        short_circuited: payload.short_circuited,
+        ts: Date.now(),
+      };
 
-  const handleSendQuery = () => {
+      const current = await getSession(activeSession.id);
+      const merged: ChatSession = {
+        ...current,
+        messages:
+          current.messages.length > 0
+            ? current.messages
+            : [...(activeSession.messages || []), assistantMsg],
+      };
+
+      setActiveSession(merged);
+      setSessions((prev) => {
+        const next = prev.filter((s) => s.id !== merged.id);
+        return [merged, ...next];
+      });
+
+      setStreamingAnswer("");
+      setLiveTrace([]);
+      setIsStreaming(false);
+      streamRef.current = null;
+    },
+    [activeSession],
+  );
+
+  const handleSendQuery = useCallback(() => {
     if (!query.trim()) {
       setError("Please enter a query before sending.");
       return;
     }
     if (!selectedModel) {
-      setError("No model selected. Check backend model availability.");
+      setError("No model selected.");
       return;
     }
 
-    if (streamRef.current) {
-      streamRef.current.close();
-      streamRef.current = null;
+    streamRef.current?.close();
+    streamRef.current = null;
+
+    const userMsg: ChatMessage = {
+      id: `msg-${Date.now()}`,
+      role: "user",
+      content: query.trim(),
+      ts: Date.now(),
+    };
+
+    if (!activeSession) {
+      setError("No active session. Create a new chat first.");
+      return;
     }
+    setActiveSession((prev) =>
+      prev
+        ? {
+            ...prev,
+            updatedAt: Date.now(),
+            messages: [...prev.messages, userMsg],
+          }
+        : prev,
+    );
 
     setError(null);
-    setAnswer("");
-    setSources([]);
-    setTrace([]);
+    setStreamingAnswer("");
+    setLiveTrace([]);
     setIsStreaming(true);
-    setLibraryItems((prev) => [
-      { id: `q-${Date.now()}`, text: query.trim(), active: true },
-      ...prev.map((item) => ({ ...item, active: false })),
-    ].slice(0, 16));
+    setQuery("");
 
     try {
       streamRef.current = streamChat(
-        query,
+        userMsg.content,
         {
-          onChunk: (text) => {
-            setAnswer((prev) => prev + text);
-          },
-          onTrace: (event) => {
-            setTrace((prev) => [...prev, event]);
-          },
-          onComplete: (payload) => {
-            handleStreamComplete(payload);
-          },
+          onChunk: (text) => setStreamingAnswer((prev) => prev + text),
+          onTrace: (event) => setLiveTrace((prev) => [...prev, event]),
+          onComplete: handleStreamComplete,
           onError: (err) => {
             setError(err.message);
             setIsStreaming(false);
-            if (streamRef.current) {
-              streamRef.current.close();
-              streamRef.current = null;
-            }
+            setStreamingAnswer("");
+            setLiveTrace([]);
+            streamRef.current?.close();
+            streamRef.current = null;
           },
         },
         selectedModel,
+        activeSession.id,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start stream");
       setIsStreaming(false);
     }
-  };
+  }, [query, selectedModel, handleStreamComplete, activeSession]);
+
+  const handleNewChat = useCallback(async () => {
+    streamRef.current?.close();
+    streamRef.current = null;
+    setStreamingAnswer("");
+    setLiveTrace([]);
+    setIsStreaming(false);
+    setQuery("");
+    setError(null);
+    const session = await createSession();
+    setActiveSession(session);
+    setSessions((prev) => [session, ...prev]);
+  }, []);
+
+  const handleSelectSession = useCallback(async (session: ChatSession) => {
+    streamRef.current?.close();
+    streamRef.current = null;
+    setStreamingAnswer("");
+    setLiveTrace([]);
+    setIsStreaming(false);
+    setQuery("");
+    setError(null);
+    const full = await getSession(session.id);
+    setActiveSession(full);
+  }, []);
+
+  const handleDeleteSession = useCallback(
+    async (id: string) => {
+      try {
+        await deleteSession(id);
+        const refreshed = await listSessions();
+        setSessions(refreshed);
+        if (activeSession?.id === id) {
+          if (refreshed.length > 0) setActiveSession(refreshed[0]);
+          else {
+            const created = await createSession();
+            setActiveSession(created);
+            setSessions([created]);
+          }
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to delete session");
+      }
+    },
+    [activeSession],
+  );
+
+  const handleSettingsSave = useCallback(async (patch: Partial<AppSettings>) => {
+    await updateSettings(patch);
+    const fresh = await fetchSettings();
+    setAppSettings(fresh);
+  }, []);
+
+  const handleUpload = useCallback(async (file: File): Promise<{ chunks_added: number }> => {
+    return ingestFile(file);
+  }, []);
 
   const navIcons = [
-    {
-      src: "https://c.animaapp.com/zPfth9Ad/img/monotone-add.svg",
-      alt: "Monotone add",
-    },
-    {
-      src: "https://c.animaapp.com/zPfth9Ad/img/monotone-add-1.svg",
-      alt: "Monotone add",
-    },
-    {
-      src: "https://c.animaapp.com/zPfth9Ad/img/monotone-add-2.svg",
-      alt: "Monotone add",
-    },
-    {
-      src: "https://c.animaapp.com/zPfth9Ad/img/monotone-add-3.svg",
-      alt: "Monotone add",
-    },
-    {
-      src: "https://c.animaapp.com/zPfth9Ad/img/monotone-add-4.svg",
-      alt: "Monotone add",
-    },
-    {
-      src: "https://c.animaapp.com/zPfth9Ad/img/monotone-add-5.svg",
-      alt: "Monotone add",
-    },
-  ];
-
-  const bottomNavIcons = [
-    {
-      src: "https://c.animaapp.com/zPfth9Ad/img/monotone-add-6.svg",
-      alt: "Monotone add",
-    },
+    { src: "https://c.animaapp.com/zPfth9Ad/img/monotone-add.svg", alt: "Home" },
+    { src: "https://c.animaapp.com/zPfth9Ad/img/monotone-add-1.svg", alt: "Discover" },
+    { src: "https://c.animaapp.com/zPfth9Ad/img/monotone-add-2.svg", alt: "Library" },
+    { src: "https://c.animaapp.com/zPfth9Ad/img/monotone-add-3.svg", alt: "Upload" },
+    { src: "https://c.animaapp.com/zPfth9Ad/img/monotone-add-4.svg", alt: "Analytics" },
+    { src: "https://c.animaapp.com/zPfth9Ad/img/monotone-add-5.svg", alt: "Settings" },
   ];
 
   return (
-    <div
-      className="flex h-[960px] items-start relative bg-white w-full min-w-[1440px]"
-      data-model-id="10301:23262"
-    >
-      <div className="inline-flex flex-col items-start gap-[368px] px-4 py-6 relative flex-[0_0_auto] bg-slate-50 border-r [border-right-style:solid] border-slate-200">
-        <div className="inline-flex flex-col items-center gap-8 relative flex-[0_0_auto]">
-          <img
-            className="relative w-12 h-12 mt-[-4.00px]"
-            alt="Logomark"
-            src="https://c.animaapp.com/zPfth9Ad/img/logomark.svg"
-          />
-
-          <div className="inline-flex flex-col items-start gap-4 relative flex-[0_0_auto]">
+    <div className="flex h-screen items-start relative bg-white w-full min-w-[1440px] overflow-hidden">
+      {/* Icon rail */}
+      <div className="inline-flex flex-col items-start gap-[auto] px-4 py-6 relative flex-shrink-0 bg-slate-50 border-r border-slate-200 h-full justify-between">
+        <div className="inline-flex flex-col items-center gap-8">
+          <img className="w-12 h-12" alt="Logo" src="https://c.animaapp.com/zPfth9Ad/img/logomark.svg" />
+          <div className="inline-flex flex-col items-start gap-4">
             {navIcons.map((icon, index) => (
-              <div
+              <button
                 key={index}
-                className={`${index === 0 ? "w-12 h-12 relative bg-white flex items-center justify-center gap-2.5 p-4 rounded-[123px] overflow-hidden" : "flex w-12 h-12 gap-2.5 p-4 rounded-[123px] overflow-hidden items-center justify-center relative"}`}
+                onClick={() => {
+                  if (index === 3) setSidebarTab("upload");
+                  if (index === 5) setShowSettings(true);
+                }}
+                className={`w-12 h-12 flex items-center justify-center gap-2.5 p-4 rounded-[123px] overflow-hidden transition-colors ${
+                  index === 0 ? "bg-white shadow-sm" : "hover:bg-slate-100"
+                }`}
               >
-                <img
-                  className="relative w-6 h-6 mt-[-4.00px] mb-[-4.00px] ml-[-4.00px] mr-[-4.00px]"
-                  alt={icon.alt}
-                  src={icon.src}
-                />
-              </div>
+                <img className="w-6 h-6" alt={icon.alt} src={icon.src} />
+              </button>
             ))}
           </div>
         </div>
-
-        <div className="inline-flex flex-col items-start gap-4 relative flex-[0_0_auto]">
-          {bottomNavIcons.map((icon, index) => (
-            <div
-              key={index}
-              className="flex w-12 h-12 gap-2.5 p-4 rounded-[123px] overflow-hidden items-center justify-center relative"
-            >
-              <img
-                className="relative w-6 h-6 mt-[-4.00px] mb-[-4.00px] ml-[-4.00px] mr-[-4.00px]"
-                alt={icon.alt}
-                src={icon.src}
-              />
-            </div>
-          ))}
-
-          <div className="relative w-12 h-12 rounded-[92.25px] bg-[url(https://c.animaapp.com/zPfth9Ad/img/avatar@2x.png)] bg-cover bg-[50%_50%]" />
+        <div className="flex flex-col items-start gap-4">
+          <div className="relative w-12 h-12 rounded-full bg-[url(https://c.animaapp.com/zPfth9Ad/img/avatar@2x.png)] bg-cover bg-center" />
         </div>
       </div>
 
-      <NavigationSidebarSection libraryItems={libraryItems} />
+      <NavigationSidebarSection
+        sessions={sessions}
+        activeSessionId={activeSession?.id || ""}
+        sidebarTab={sidebarTab}
+        onTabChange={setSidebarTab}
+        onNewChat={handleNewChat}
+        onSelectSession={handleSelectSession}
+        onDeleteSession={handleDeleteSession}
+        onUpload={handleUpload}
+      />
+
       <ArticleDetailSection
         models={models}
         selectedModel={selectedModel}
@@ -211,12 +291,21 @@ export const Desktop = (): JSX.Element => {
         query={query}
         onQueryChange={setQuery}
         onSend={handleSendQuery}
-        answer={answer}
-        sources={sources}
-        trace={trace}
+        messages={activeSession?.messages || []}
+        streamingAnswer={streamingAnswer}
+        liveTrace={liveTrace}
         error={error}
         isStreaming={isStreaming}
       />
+
+      {showSettings && appSettings && (
+        <SettingsPanel
+          settings={appSettings}
+          models={models}
+          onSave={handleSettingsSave}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
     </div>
   );
 };

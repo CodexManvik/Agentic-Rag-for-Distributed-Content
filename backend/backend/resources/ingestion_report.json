@@ -1,5 +1,5 @@
 {
-  "run_timestamp": "2026-03-29T18:28:35Z",
+  "run_timestamp": "2026-04-06T09:25:38Z",
   "resource_pack_name": "hackathon_public_pack_v2",
   "resource_pack_path": "resources\\resource_pack.yaml",
   "processed_urls": [
@@ -25,7 +25,7 @@
     "https://github.com/explodinggradients/ragas/blob/main/README.md"
   ],
   "processed_pdfs": [
-    "C:\\Project\\ideathon\\Hackathon_Problem_Statement_SmartKnowledgeNavigator.docx.pdf",
+    "C:\\Project\\agentic_rag\\Agentic-Rag-for-Distributed-Content\\Hackathon_Problem_Statement_SmartKnowledgeNavigator.docx.pdf",
     "https://arxiv.org/pdf/2005.11401.pdf",
     "https://arxiv.org/pdf/2312.10997.pdf",
     "https://arxiv.org/pdf/2310.11511.pdf",
@@ -38,16 +38,15 @@
     "https://arxiv.org/pdf/2402.05102.pdf"
   ],
   "processed_docs": [
-    "C:\\Project\\ideathon\\README.md",
-    "C:\\Project\\ideathon\\backend\\resources\\architecture_notes.md",
-    "C:\\Project\\ideathon\\backend\\resources\\rag_concepts.md"
+    "C:\\Project\\agentic_rag\\Agentic-Rag-for-Distributed-Content\\backend\\resources\\architecture_notes.md",
+    "C:\\Project\\agentic_rag\\Agentic-Rag-for-Distributed-Content\\backend\\resources\\rag_concepts.md"
   ],
-  "documents_processed": 34,
-  "chunks_added": 111,
-  "skipped_duplicates": 2247,
+  "documents_processed": 33,
+  "chunks_added": 12524,
+  "skipped_duplicates": 0,
   "errors": [],
-  "total_duration_seconds": 137.413,
-  "success_count": 34,
+  "total_duration_seconds": 1111.703,
+  "success_count": 33,
   "failed_count": 0,
   "source_results": [
     {
@@ -56,8 +55,8 @@
       "domain": "support.atlassian.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 14,
+      "chunks_added": 2,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -66,8 +65,8 @@
       "domain": "support.atlassian.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 21,
+      "chunks_added": 3,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -76,8 +75,8 @@
       "domain": "support.atlassian.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 23,
+      "chunks_added": 3,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -86,8 +85,8 @@
       "domain": "support.atlassian.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 36,
+      "chunks_added": 4,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -96,8 +95,8 @@
       "domain": "confluence.atlassian.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 8,
+      "chunks_added": 1,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -106,8 +105,8 @@
       "domain": "confluence.atlassian.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 8,
+      "chunks_added": 1,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -116,8 +115,8 @@
       "domain": "github.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 10,
+      "chunks_added": 2,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -126,8 +125,8 @@
       "domain": "github.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 7,
+      "chunks_added": 1,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -136,8 +135,8 @@
       "domain": "github.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 10,
+      "chunks_added": 2,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -146,8 +145,8 @@
       "domain": "github.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 9,
+      "chunks_added": 2,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -156,8 +155,8 @@
       "domain": "github.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 3,
+      "chunks_added": 1,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -166,8 +165,8 @@
       "domain": "github.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 6,
+      "chunks_added": 1,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -176,8 +175,8 @@
       "domain": "github.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 15,
+      "chunks_added": 2,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -186,8 +185,8 @@
       "domain": "github.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 18,
+      "chunks_added": 4,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -196,8 +195,8 @@
       "domain": "github.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 3,
+      "chunks_added": 1,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -206,8 +205,8 @@
       "domain": "github.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 17,
+      "chunks_added": 3,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -216,8 +215,8 @@
       "domain": "github.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 2,
+      "chunks_added": 1,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -226,8 +225,8 @@
       "domain": "github.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 19,
+      "chunks_added": 3,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -236,8 +235,8 @@
       "domain": "github.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 19,
+      "chunks_added": 9,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -246,18 +245,18 @@
       "domain": "github.com",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 10,
+      "chunks_added": 2,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
-      "source": "C:\\Project\\ideathon\\Hackathon_Problem_Statement_SmartKnowledgeNavigator.docx.pdf",
+      "source": "C:\\Project\\agentic_rag\\Agentic-Rag-for-Distributed-Content\\Hackathon_Problem_Statement_SmartKnowledgeNavigator.docx.pdf",
       "source_type": "pdf_local",
       "domain": "local",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 8,
+      "chunks_added": 57,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -266,8 +265,8 @@
       "domain": "arxiv.org",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 124,
+      "chunks_added": 572,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -276,8 +275,8 @@
       "domain": "arxiv.org",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 191,
+      "chunks_added": 1080,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -286,8 +285,8 @@
       "domain": "arxiv.org",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 191,
+      "chunks_added": 911,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -296,8 +295,8 @@
       "domain": "arxiv.org",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 618,
+      "chunks_added": 4616,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -306,8 +305,8 @@
       "domain": "arxiv.org",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 240,
+      "chunks_added": 579,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -316,8 +315,8 @@
       "domain": "arxiv.org",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 74,
+      "chunks_added": 1398,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -326,8 +325,8 @@
       "domain": "arxiv.org",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 117,
+      "chunks_added": 475,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -336,8 +335,8 @@
       "domain": "arxiv.org",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 141,
+      "chunks_added": 1623,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -346,8 +345,8 @@
       "domain": "arxiv.org",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 82,
+      "chunks_added": 322,
+      "skipped_duplicates": 0,
       "error": null
     },
     {
@@ -356,38 +355,28 @@
       "domain": "arxiv.org",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 169,
-      "error": null
-    },
-    {
-      "source": "C:\\Project\\ideathon\\README.md",
-      "source_type": "project_doc",
-      "domain": "local",
-      "status": "ok",
-      "documents_processed": 1,
-      "chunks_added": 71,
-      "skipped_duplicates": 6,
-      "error": null
-    },
-    {
-      "source": "C:\\Project\\ideathon\\backend\\resources\\architecture_notes.md",
-      "source_type": "project_doc",
-      "domain": "local",
-      "status": "ok",
-      "documents_processed": 1,
-      "chunks_added": 40,
+      "chunks_added": 832,
       "skipped_duplicates": 0,
       "error": null
     },
     {
-      "source": "C:\\Project\\ideathon\\backend\\resources\\rag_concepts.md",
+      "source": "C:\\Project\\agentic_rag\\Agentic-Rag-for-Distributed-Content\\backend\\resources\\architecture_notes.md",
       "source_type": "project_doc",
       "domain": "local",
       "status": "ok",
       "documents_processed": 1,
-      "chunks_added": 0,
-      "skipped_duplicates": 28,
+      "chunks_added": 7,
+      "skipped_duplicates": 0,
+      "error": null
+    },
+    {
+      "source": "C:\\Project\\agentic_rag\\Agentic-Rag-for-Distributed-Content\\backend\\resources\\rag_concepts.md",
+      "source_type": "project_doc",
+      "domain": "local",
+      "status": "ok",
+      "documents_processed": 1,
+      "chunks_added": 4,
+      "skipped_duplicates": 0,
       "error": null
     }
   ]

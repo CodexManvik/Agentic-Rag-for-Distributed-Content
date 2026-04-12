@@ -76,3 +76,51 @@ RAG stands for retrieval-augmented generation, a general-purpose fine-tuning app
 RAW OUTPUT:
 Vector search and BM25 are two different approaches to information retrieval. Vector search, as implemented by FAISS, focuses on finding the k most similar vectors to a query vector, whereas BM25 is a traditional ranking algorithm that retrieves documents based on their relevance to a query [1]. The primary difference lies in their query mechanisms, with vector search using similarity metrics and BM25 using term frequencies and document lengths [3].
 ============================================================
+
+============================================================
+[2026-04-05T16:49:53.234273+00:00] QUERY: what is rag
+RAW OUTPUT:
+RAG stands for Retrieval-Augmented Generation, a model that combines pre-trained parametric and non-parametric memory for language generation. It uses a pre-trained seq2seq model as its parametric memory and a dense vector as its non-parametric memory [2]. This combination enables the model to leverage both structured and unstructured knowledge for more accurate generation [1].
+============================================================
+
+============================================================
+[2026-04-05T16:51:06.253293+00:00] QUERY: tell me about parametric memory
+RAW OUTPUT:
+Parametric memory refers to the component of memory that uses mathematical equations and statistical models to store and retrieve information, as seen in pre-trained seq2seq transformer models [1]. This type of memory is guided by parametric parameters, which are learned during training. In contrast, non-parametric memory relies on patterns and associations rather than explicit mathematical representations [3].
+============================================================
+
+============================================================
+[2026-04-05T16:54:08.637221+00:00] QUERY: what is rag
+RAW OUTPUT:
+RAG stands for Retrieval-Augmented Generation, a model that combines pre-trained parametric and non-parametric memory for language generation [2]. It uses a pre-trained seq2seq model as the parametric memory and a dense vector as the non-parametric memory [2]. This combination enables RAG models to obtain state-of-the-art results on open-domain QA [3].
+============================================================
+
+============================================================
+[2026-04-05T16:54:26.617131+00:00] QUERY: what is rag
+RAW OUTPUT:
+RAG stands for Retrieval-Augmented Generation, a model that combines pre-trained parametric and non-parametric memory for language generation [2]. It uses a pre-trained seq2seq model as the parametric memory and a dense vector as the non-parametric memory [2]. RAG models have been shown to obtain state-of-the-art results on open-domain QA. [1]
+============================================================
+
+============================================================
+[2026-04-06T06:18:33.322633+00:00] QUERY: can you tell me about rag
+RAW OUTPUT:
+
+============================================================
+
+============================================================
+[2026-04-06T06:20:53.080535+00:00] QUERY: tell me about rag
+RAW OUTPUT:
+Retrieval-Augmented Generation (RAG) is a model that combines pre-trained parametric and non-parametric memory for language generation, where the parametric memory is a pre-trained seq2seq model. RAG models use a dense vector as non-parametric memory [1]. This technique has been applied to large language models (LLMs), achieving significant improvements in domain-specific tasks [3].
+============================================================
+
+============================================================
+[2026-04-06T06:26:32.063335+00:00] QUERY: can you tell me about rag
+RAW OUTPUT:
+Retrieval-Augmented Generation (RAG) models combine pre-trained parametric and non-parametric memory for language generation, introducing a general-purpose fine-tuning recipe [1]. RAG models utilize a pre-trained seq2seq model as parametric memory and a dense vector as non-parametric memory. This technique has been applied to various large language models (LLMs) in natural language processing [3].
+============================================================
+
+============================================================
+[2026-04-06T08:23:34.674785+00:00] QUERY: can you tell me about rag
+RAW OUTPUT:
+RAG models combine pre-trained parametric and non-parametric memory for language generation, where the parametric memory is a pre-trained seq2seq model and the non-parametric memory is a dense vector. This approach aims to leverage the strengths of both types of memories in retrieval-augmented generation [1]. RAG models have been applied to various tasks, including those related to large language models and natural language processing [2].
+============================================================

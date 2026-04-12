@@ -12,14 +12,21 @@ langgraph==0.2.62
 langchain==0.3.13
 langchain-ollama==0.2.3
 langchain-text-splitters==0.3.4
+llama-index-core
+llama-index-llms-ollama
+llama-index-embeddings-ollama
+llama-index-vector-stores-chroma  # Keep temporarily for migration
+llama-cpp-python>=0.2.50  # New: llama.cpp inference backend
 
 # Vector Database & Search
-chromadb==0.5.23
+chromadb==0.5.23  # Keep temporarily for migration
+lancedb>=0.5.0  # New primary vector store
 rank-bm25==0.2.2
 
 # Document Processing
 beautifulsoup4==4.12.3
 pymupdf==1.24.8
+pypdf>=4.0.0  # Fallback PDF parser if PyMuPDF unavailable
 requests==2.32.3
 PyYAML==6.0.2
 
@@ -41,6 +48,8 @@ prometheus-client==0.19.0
 
 # Utilities
 posthog<4
+huggingface-hub>=0.20.0  # New: Model download and management
+GPUtil>=1.4.0  # New: GPU detection for hardware adaptation
 
 # Frontend
 streamlit==1.41.1

@@ -23,3 +23,7 @@ desktop-app/.env.local
 desktop-app/.env.*.local
 backend/app/agents/__pycache__
 */node_modules
+backend/lancedb_data/
+*/lancedb_data/
+./scripts/backend/
+backend/scripts/backend/

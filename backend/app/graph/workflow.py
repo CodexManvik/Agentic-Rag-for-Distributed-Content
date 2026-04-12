@@ -1,240 +1,130 @@
-import time
-import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, cast
+from typing import Any, cast
 
+from langgraph.errors import GraphRecursionError
 from langgraph.graph import END, StateGraph
 
 from app.agents.executor import AgentExecutor
 from app.agents.registry import AgentRegistry
 from app.config import settings
-from app.graph.nodes import (
-    is_fallback_abstain_answer,
+from app.graph.nodes import FALLBACK_ABSTAIN_TEXT, retrieval_node, synthesis_node
+from app.graph.state import AgentState, Citation, NavigatorState, RetrievedChunk
+from app.supervisor.config import SupervisorConfig
+from app.supervisor.execution_engine import ExecutionEngine
+from app.supervisor.supervisor_agent import SupervisorAgent
+
+
+def _route_from_supervisor(state: AgentState) -> str:
+    next_step = str(state.get("next_step", "FINISH"))
+    if next_step in {"RetrievalAgent", "SynthesisAgent", "FINISH"}:
+        return next_step
+    if next_step == "AdequacyAgent":
+        return "SynthesisAgent" if state.get("retrieved_chunks") else "RetrievalAgent"
+    return "FINISH"
+
+
+_manifest_dir = Path(__file__).resolve().parents[1] / "agents" / "manifests"
+_agent_registry = AgentRegistry(_manifest_dir)
+_agent_registry.load_agents()
+_agent_executor = AgentExecutor(_agent_registry)
+_supervisor = SupervisorAgent(
+    registry=_agent_registry,
+    execution_engine=ExecutionEngine(_agent_executor),
+    config=SupervisorConfig(
+        planning_enabled=True,
+        fallback_agent="retrieval",
+        enable_short_circuit=settings.enable_short_circuit_routing,
+        short_circuit_confidence_threshold=settings.short_circuit_confidence_threshold,
+    ),
 )
-from app.graph.state import NavigatorState
 
 
-AGENT_MANIFEST_DIR = Path(__file__).resolve().parents[1] / "agents" / "manifests"
-agent_registry = AgentRegistry(AGENT_MANIFEST_DIR)
-agent_registry.load_agents()
-agent_executor = AgentExecutor(agent_registry)
+def supervisor_node(state: AgentState) -> dict[str, Any]:
+    return _supervisor.route_state(state)
 
 
-def _timed_node(name: str, fn: Callable[[NavigatorState], NavigatorState]) -> Callable[[NavigatorState], NavigatorState]:
-    def wrapped(state: NavigatorState) -> NavigatorState:
-        started_at = datetime.now(timezone.utc).isoformat()
-        start = time.perf_counter()
-        out = fn(state)
-        elapsed_ms = (time.perf_counter() - start) * 1000
-        finished_at = datetime.now(timezone.utc).isoformat()
-        timings = out.get("stage_timings", {})
-        timings[name] = round(float(timings.get(name, 0.0)) + elapsed_ms, 2)
-        out["stage_timings"] = timings
-        attempt = {
-            "started_at": started_at,
-            "finished_at": finished_at,
-            "duration_ms": round(elapsed_ms, 2),
-        }
-        timestamps = out.get("stage_timestamps", {})
-        previous = timestamps.get(name)
-        if isinstance(previous, dict):
-            attempts = previous.get("attempts", [])
-            if not isinstance(attempts, list):
-                attempts = []
-            attempts.append(attempt)
-            total_duration = round(sum(float(a.get("duration_ms", 0.0)) for a in attempts), 2)
-            timestamps[name] = {
-                "started_at": previous.get("started_at", started_at),
-                "finished_at": finished_at,
-                "duration_ms": total_duration,
-                "attempt_count": len(attempts),
-                "last_attempt_duration_ms": attempt["duration_ms"],
-                "attempts": attempts,
-            }
-        else:
-            timestamps[name] = {
-                "started_at": started_at,
-                "finished_at": finished_at,
-                "duration_ms": attempt["duration_ms"],
-                "attempt_count": 1,
-                "last_attempt_duration_ms": attempt["duration_ms"],
-                "attempts": [attempt],
-            }
-        out["stage_timestamps"] = timestamps
-        if out.get("trace"):
-            last = out["trace"][-1]
-            if last.get("node") == name:
-                last["duration_ms"] = round(elapsed_ms, 2)
-        return out
+builder = StateGraph(AgentState)
+builder.add_node("Supervisor", supervisor_node)
+builder.add_node("RetrievalAgent", retrieval_node)
+builder.add_node("SynthesisAgent", synthesis_node)
 
-    return wrapped
+builder.set_entry_point("Supervisor")
+
+builder.add_conditional_edges(
+    "Supervisor",
+    lambda state: _route_from_supervisor(cast(AgentState, state)),
+    {
+        "RetrievalAgent": "RetrievalAgent",
+        "SynthesisAgent": "SynthesisAgent",
+        "FINISH": END,
+    },
+)
+
+builder.add_edge("RetrievalAgent", "Supervisor")
+builder.add_edge("SynthesisAgent", "Supervisor")
+
+graph = builder.compile()
+workflow = graph
 
 
-def _route_after_adequacy(state: NavigatorState) -> str:
-    if state["abstained"]:
-        return "abstain"
-
-    quality = state["retrieval_quality"]
-    weak_topical = "weak topical match" in str(quality.get("reason", "")).lower()
-    if weak_topical and state["retries_used"] < settings.max_retrieval_retries:
-        return "reformulation"
-
-    if quality["adequate"]:
-        return "synthesis"
-
-    # REMOVED "moderate_support" exception (BUG #6 fix)
-    # Only route to synthesis if evidence is actually meaningful AND diverse
-    has_meaningful_evidence = (
-        quality["max_score"] >= 0.30  # STRICT threshold
-        and quality["chunk_count"] >= 2
-        and quality["source_diversity"] >= 2
-    )
-
-    if has_meaningful_evidence:
-        return "synthesis"
-
-    # For low-latency, retry before failing
-    if settings.normalized_runtime_profile == "low_latency":
-        if state["retries_used"] < settings.max_retrieval_retries:
-            return "reformulation"
-
-    return "abstain"
-
-
-def _route_after_validation(state: NavigatorState) -> str:
-    return "abstain" if state["abstained"] else "finalize"
-
-
-def build_graph():
-    graph = StateGraph(NavigatorState)
-    graph.add_node(
-        "normalize_query",
-        _timed_node("normalize_query", agent_executor.create_node(agent_registry.get_agent("normalize_query"))),
-    )
-    graph.add_node(
-        "planning",
-        _timed_node("planning", agent_executor.create_node(agent_registry.get_agent("planning"))),
-    )
-    graph.add_node(
-        "retrieval",
-        _timed_node("retrieval", agent_executor.create_node(agent_registry.get_agent("retrieval"))),
-    )
-    graph.add_node(
-        "adequacy",
-        _timed_node("adequacy", agent_executor.create_node(agent_registry.get_agent("adequacy"))),
-    )
-    graph.add_node(
-        "reformulation",
-        _timed_node("reformulation", agent_executor.create_node(agent_registry.get_agent("reformulation"))),
-    )
-    graph.add_node(
-        "synthesis",
-        _timed_node("synthesis", agent_executor.create_node(agent_registry.get_agent("synthesis"))),
-    )
-    graph.add_node(
-        "citation_validation",
-        _timed_node(
-            "citation_validation",
-            agent_executor.create_node(agent_registry.get_agent("citation_validation")),
-        ),
-    )
-    graph.add_node(
-        "abstain",
-        _timed_node("abstain", agent_executor.create_node(agent_registry.get_agent("abstain"))),
-    )
-    graph.add_node(
-        "finalize",
-        _timed_node("finalize", agent_executor.create_node(agent_registry.get_agent("finalize"))),
-    )
-
-    graph.set_entry_point("normalize_query")
-    graph.add_edge("normalize_query", "planning")
-    graph.add_edge("planning", "retrieval")
-    graph.add_edge("retrieval", "adequacy")
-    graph.add_conditional_edges(
-        "adequacy",
-        _route_after_adequacy,
-        {
-            "synthesis": "synthesis",
-            "reformulation": "reformulation",
-            "abstain": "abstain",
-        },
-    )
-    graph.add_edge("reformulation", "retrieval")
-    graph.add_edge("synthesis", "citation_validation")
-    graph.add_conditional_edges(
-        "citation_validation",
-        _route_after_validation,
-        {
-            "finalize": "finalize",
-            "abstain": "abstain",
-        },
-    )
-    graph.add_edge("finalize", END)
-    graph.add_edge("abstain", END)
-    return graph.compile()
-
-
-workflow = build_graph()
-
-
-def _append_stage_latency_log(query: str, state: NavigatorState) -> None:
-    resources_dir = Path(__file__).resolve().parents[2] / "resources"
-    resources_dir.mkdir(parents=True, exist_ok=True)
-    log_path = resources_dir / "stage_latency.jsonl"
-    retrieval_quality = state.get("retrieval_quality", {})
-    synthesis_output = state.get("synthesis_output", {})
-    synthesis_answer = str(synthesis_output.get("answer", ""))
-    synthesis_abstained = bool(synthesis_output.get("abstain_reason")) or is_fallback_abstain_answer(synthesis_answer)
-    answer_prefix = synthesis_answer.replace("\n", " ").strip()[:120]
-    chunks = state.get("retrieved_chunks", [])
-    top_chunks = []
-    for chunk in chunks[:5]:
-        metadata = chunk.get("metadata", {})
-        top_chunks.append(
+def _build_citation_objects(chunks: list[RetrievedChunk], cited_indices: list[int]) -> list[Citation]:
+    citations: list[Citation] = []
+    for new_idx, cited_idx in enumerate(cited_indices, start=1):
+        if cited_idx < 1 or cited_idx > len(chunks):
+            continue
+        chunk = chunks[cited_idx - 1]
+        metadata = cast(dict[str, Any], chunk.get("metadata", {}))
+        citations.append(
             {
-                "source": chunk.get("source"),
-                "url": metadata.get("url") or metadata.get("path"),
-                "title": metadata.get("title") or chunk.get("source"),
-                "score": round(float(chunk.get("score", 0.0)), 4),
+                "index": new_idx,
+                "source": str(chunk.get("source", "unknown")),
+                "url": cast(str | None, metadata.get("url") or metadata.get("path")),
+                "snippet": str(chunk.get("content", ""))[:420],
+                "source_type": cast(str | None, metadata.get("source_type")),
+                "section": cast(str | None, metadata.get("section")),
+                "page_number": cast(int | None, metadata.get("page_number")),
             }
         )
-    payload = {
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "query": query,
-        "profile": settings.normalized_runtime_profile,
-        "abstained": bool(state.get("abstained", False)),
-        "policy_blocked": str(retrieval_quality.get("reason", "")) == "Policy scope violation",
-        "chunk_count": int(retrieval_quality.get("chunk_count", 0)),
-        "adequate": bool(retrieval_quality.get("adequate", False)),
-        "synthesis": {
-            "abstained": synthesis_abstained,
-            "answer_prefix": answer_prefix,
-        },
-        "final": {
-            "abstained": bool(state.get("abstained", False)),
-        },
-        "sub_queries": state.get("sub_queries", []),
-        "top_chunks": top_chunks,
-        "stage_timings": state.get("stage_timings", {}),
-        "stage_timestamps": state.get("stage_timestamps", {}),
+    return citations
+
+
+def _build_retrieval_quality(chunks: list[RetrievedChunk]) -> dict[str, Any]:
+    scores = [float(c.get("score", 0.0) or 0.0) for c in chunks]
+    sources = {str(c.get("source", "unknown")) for c in chunks}
+    max_score = max(scores) if scores else 0.0
+    avg_score = (sum(scores) / len(scores)) if scores else 0.0
+    return {
+        "max_score": max_score,
+        "avg_score": avg_score,
+        "source_diversity": len(sources),
+        "chunk_count": len(chunks),
+        "adequate": len(chunks) > 0,
+        "reason": "Retrieved chunks" if chunks else "No chunks retrieved",
     }
-    with log_path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(payload, ensure_ascii=True) + "\n")
 
 
 def run_workflow(query: str, model: str | None = None) -> NavigatorState:
-    from app.config import settings
     selected_model = model or settings.ollama_chat_model
-    initial_state: NavigatorState = {
+    initial_state: AgentState = {
         "query": query,
         "original_query": query,
         "selected_model": selected_model,
-        "sub_queries": [],
+        "messages": [],
         "retrieved_chunks": [],
         "final_response": "",
         "citations": [],
+        "cited_indices": [],
+        "confidence": 0.0,
+        "sub_queries": [query],
+        "trace": [],
+        "next_step": "RetrievalAgent",
+        "short_circuited": False,
+        "retries_used": 0,
+        "validation_retries_used": 0,
+        "abstained": False,
+        "abstain_reason": None,
+        "used_deterministic_fallback": False,
         "retrieval_quality": {
             "max_score": 0.0,
             "avg_score": 0.0,
@@ -243,24 +133,88 @@ def run_workflow(query: str, model: str | None = None) -> NavigatorState:
             "adequate": False,
             "reason": "Not evaluated",
         },
-        "retries_used": 0,
-        "validation_retries_used": 0,
+        "stage_timings": {},
+        "stage_timestamps": {},
         "validation_errors": [],
-        "abstained": False,
-        "abstain_reason": None,
-        "confidence": 0.0,
-        "used_deterministic_fallback": False,
-        "cited_indices": [],
         "synthesis_output": {
             "answer": "",
             "cited_indices": [],
             "confidence": 0.0,
             "abstain_reason": None,
         },
-        "trace": [],
-        "stage_timings": {},
-        "stage_timestamps": {},
     }
-    result: NavigatorState = workflow.invoke(initial_state)  # type: ignore[assignment]
-    _append_stage_latency_log(query, result)
-    return result
+
+    try:
+        result = cast(AgentState, graph.invoke(initial_state, config={"recursion_limit": 25}))
+    except GraphRecursionError as exc:
+        timeout_trace = list(initial_state.get("trace", []))
+        timeout_trace.append(
+            {
+                "node": "Supervisor",
+                "status": "failed",
+                "detail": f"recursion_limit_reached: {exc}",
+                "ts": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        result = cast(
+            AgentState,
+            {
+                **initial_state,
+                "trace": timeout_trace,
+                "abstained": True,
+                "abstain_reason": "Recursion limit reached before completion",
+            },
+        )
+    final_state: dict[str, Any] = dict(result)
+
+    chunks = cast(list[RetrievedChunk], list(final_state.get("retrieved_chunks", [])))
+    raw_citations = list(final_state.get("citations", []))
+
+    cited_indices: list[int] = []
+    if raw_citations and all(isinstance(item, int) for item in raw_citations):
+        cited_indices = sorted(
+            {
+                int(item)
+                for item in raw_citations
+                if isinstance(item, int) and 1 <= int(item) <= len(chunks)
+            }
+        )
+        final_state["citations"] = _build_citation_objects(chunks, cited_indices)
+    elif raw_citations and all(isinstance(item, dict) for item in raw_citations):
+        cited_indices = sorted(
+            {
+                int(item.get("index", 0))
+                for item in raw_citations
+                if isinstance(item.get("index"), int)
+            }
+        )
+    else:
+        final_state["citations"] = []
+
+    final_state["cited_indices"] = cited_indices
+    final_state.setdefault("retrieval_quality", _build_retrieval_quality(chunks))
+    final_state.setdefault("trace", [])
+    final_state.setdefault("stage_timings", {})
+    final_state.setdefault("sub_queries", [query])
+    final_state.setdefault("short_circuited", False)
+
+    final_response = str(final_state.get("final_response", "")).strip()
+    final_state["final_response"] = final_response
+    is_abstain_answer = final_response in {"", FALLBACK_ABSTAIN_TEXT}
+    final_state["abstained"] = is_abstain_answer
+    if not is_abstain_answer:
+        final_state["abstain_reason"] = None
+    else:
+        final_state.setdefault("abstain_reason", "No sufficient grounded answer available")
+    final_state.setdefault("confidence", 0.0)
+    final_state.setdefault(
+        "synthesis_output",
+        {
+            "answer": final_response,
+            "cited_indices": cited_indices,
+            "confidence": float(final_state.get("confidence", 0.0) or 0.0),
+            "abstain_reason": final_state.get("abstain_reason"),
+        },
+    )
+
+    return cast(NavigatorState, final_state)

@@ -35,7 +35,7 @@ class AgentOrchestrator:
         state: Any,
         context: ExecutionContext,
     ) -> Any:
-        current = dict(state)
+        current: Any = dict(state)
         for index, step in enumerate(steps):
             agent_name = str(step["agent"])
             child_context = context.child(agent_name)

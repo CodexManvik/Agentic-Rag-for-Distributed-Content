@@ -2,7 +2,7 @@
   "version": "1.0.0",
   "type": "module",
   "source": "./index.html",
-  "name": "Aura (Agentic Unified Retrieval Agent)",
+  "name": "aura-agentic-rag",
   "description": "A React project",
   "scripts": {
     "dev": "vite",

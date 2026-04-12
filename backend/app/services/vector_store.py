@@ -506,16 +506,16 @@ def assess_retrieval_adequacy(
         # First, check if low_latency_skip_overlap_check allows bypass of strict checks
         if (
             settings.low_latency_skip_overlap_check
-            and max_score >= min_score
-            and chunk_count >= settings.retrieval_min_chunks
+            and max_score >= 0.25  # Relaxed threshold for low-latency (was 0.65)
+            and chunk_count >= 1  # At least 1 chunk (was 2)
         ):
             adequate = True
             reason = "Adequate evidence (low-latency override)"
         else:
             # Fall back to moderate support criteria
             moderate_support = (
-                max_score >= max(0.20, settings.retrieval_min_score * 0.7)
-                and chunk_count >= max(2, settings.retrieval_min_chunks)
+                max_score >= 0.15  # Very relaxed threshold
+                and chunk_count >= 1
                 and source_diversity >= 1
             )
             if moderate_support:
